@@ -41,5 +41,5 @@ db.sqlite3-journal
 # Sphinx documentation
 docs/_build/
 
-# Dataset Folder
 */dat/*
+*.vscode/
