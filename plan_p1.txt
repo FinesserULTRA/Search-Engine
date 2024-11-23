@@ -1,0 +1,11 @@
+> Parser
+
+> Lexicon
+    > Forward
+    > Inverted
+
+> Fields to extract words from.
+	> offerings.name
+	> offerings.location
+	> reviews.title
+	> reviews.text
