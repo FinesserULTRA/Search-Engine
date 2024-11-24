@@ -2,18 +2,25 @@ import pandas as pd
 import numpy as np
 import json
 from helper import remove_punctuation, remove_stopwords, remove_urls
+from Legacy import process_and_normalize_hotel_data
+
+
+def script_clean(file_path):
+    normalize_and_input_csv()
+    process_and_normalize_hotel_data()
+    return 1
 
 
 def normalize_and_input_csv():
     # Import and view datasets to understand the content
-    df = pd.read_csv("../dat/reviews.csv")
+    df = pd.read_csv("../data/reviews.csv")
 
     # deconstruct json columns
     json_cols = ["ratings"]
 
     def clean_json(x):
         "Create apply function for decoding JSON"
-        return json.loads(x)
+        return json.loads(x, encoding="utf-8-sig")
 
     for x in json_cols:
         df[x] = df[x].str.replace("'", '"')
@@ -25,7 +32,6 @@ def normalize_and_input_csv():
     df = df.drop(
         [
             "num_helpful_votes",
-            "id",
             "author",
             "via_mobile",
             "date",
@@ -34,22 +40,24 @@ def normalize_and_input_csv():
         ],
         axis=1,
     )
+    df["rev_id"] = range(1, len(df) + 1)
 
     ## Lower Casing
     df["text"] = df["text"].str.lower()
+    df["title"] = df["title"].str.lower()
 
     df["text"] = df["text"].apply(lambda text: remove_punctuation(text))
+    df["title"] = df["title"].apply(lambda text: remove_punctuation(text))
 
     df["text"] = df["text"].apply(lambda text: remove_stopwords(text))
+    df["title"] = df["title"].apply(lambda text: remove_stopwords(text))
 
     df["text"] = df["text"].apply(lambda text: remove_urls(text))
+    df["title"] = df["title"].apply(lambda text: remove_urls(text))
 
     print(df.info())
     print(df.head())
 
-    df.to_csv("../dat/cleaned_reviews.csv", index=False)
+    df.to_csv("../data/cleaned_reviews.csv", index=False)
 
     return df
-
-
-normalize_and_input_csv()

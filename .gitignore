@@ -41,5 +41,7 @@ db.sqlite3-journal
 # Sphinx documentation
 docs/_build/
 
-*/dat/*
+*/data/*
+*/index data/*
+*/reviews/*
 *.vscode/

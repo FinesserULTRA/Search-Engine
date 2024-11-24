@@ -22,3 +22,8 @@ def remove_stopwords(text):
 def remove_urls(text):
     url_pattern = re.compile(r"https?://\S+|www\.\S+")
     return url_pattern.sub(r"", text)
+
+def get_batch_file(offering_id):
+    batch_size = 1000
+    batch_index = (int(offering_id) - 1) // batch_size + 1
+    return f"reviews/reviews_batch_{batch_index}.json"

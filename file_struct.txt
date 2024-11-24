@@ -1,0 +1,29 @@
+Backend/
+│
+├── app.py
+├── search data or index data/
+│   ├── hotels.json
+│   ├── lexicon.csv
+│   ├── inverted_index.json
+|   ├── review_index.json
+├── reviews/
+│   ├── batch_1(1-1000).json
+│   ├── batch_2(1001-2000).json
+│   └── ...
+├── utils/
+│   ├── lexicon.py
+│   ├── inverted_index.py
+│   ├── tokenization.py
+│   └── file_io.py
+├── data/
+│   ├── hotels.csv
+│   ├── reviews.csv
+│   ├── hotel_aggregated.csv
+│   └── cleaned.csv
+├── requirements.txt
+├── README.md
+└── tests/
+    ├── test_app.py
+    ├── test_lexicon.py
+    ├── test_inverted_index.py
+    └── ...
