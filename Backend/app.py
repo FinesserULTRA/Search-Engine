@@ -44,7 +44,7 @@ def rebuild_hotel_index(hotels):
         for token in tokens:
             if token not in inverted_index:
                 inverted_index[token] = []
-            inverted_index[token].append(offering_id)
+            inverted_index[token].append(str(offering_id))
 
     # Save the inverted index to a file
     with open(INVERTED_INDEX_FILE, "w") as f:
@@ -139,6 +139,8 @@ async def upload_reviews():
 async def search_hotels(query: str):
     """Search for hotels using the query string."""
     try:
+        tokenizer = Tokenizer()
+
         # Load the inverted index
         if not os.path.exists(INVERTED_INDEX_FILE):
             raise HTTPException(status_code=400, detail="Inverted index not found")
@@ -146,14 +148,17 @@ async def search_hotels(query: str):
         with open(INVERTED_INDEX_FILE, "r") as f:
             inverted_index = json.load(f)
 
-        tokens = tokenize(query)
+        tokens = tokenizer.tokenize_with_spacy(query)
         print(f"Tokens from query: {tokens}")
 
         matched_ids = set()
 
         for token in tokens:
             if token in inverted_index:
+                print(f"Token '{token}' found in index.")
                 matched_ids.update(inverted_index[token])
+            else:
+                print(f"Token '{token}' not found in index.")
 
         # Load hotels from hotels.json
         if not os.path.exists(HOTELS_FILE):
@@ -162,7 +167,10 @@ async def search_hotels(query: str):
         with open(HOTELS_FILE, "r") as f:
             hotels = json.load(f)
 
-        results = [hotels[hotel_id] for hotel_id in matched_ids if hotel_id in hotels]
+        # Filter results
+        results = [
+            hotels[str(hotel_id)] for hotel_id in matched_ids if str(hotel_id) in hotels
+        ]
 
         return {"status": "success", "count": len(results), "results": results}
     except Exception as e:
