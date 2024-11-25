@@ -17,7 +17,7 @@ def process_and_normalize_hotel_data():
     try:
         # Load the CSV files into pandas dataframes
         reviews_df = pd.read_csv("../data/cleaned_reviews.csv", encoding="utf-8-sig")
-        offerings_df = pd.read_csv("../data/offerings.csv", encoding="utf-8-sig")
+        offerings_df = pd.read_csv("../data/hotels.csv", encoding="utf-8-sig")
 
         # Rename 'id' column in offerings_df to 'offering_id' for consistency
         offerings_df = offerings_df.rename(columns={"id": "offering_id"})
@@ -76,7 +76,7 @@ def process_and_normalize_hotel_data():
             ]
         )
 
-        combined_df = combined_df.dropna()
+        # combined_df = combined_df.dropna()
 
         hotels_grouped = (
             combined_df.groupby(

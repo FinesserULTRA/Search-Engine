@@ -1,3 +1,5 @@
+# not of use in the final version of the project
+
 import nltk
 from nltk.corpus import stopwords
 import re
