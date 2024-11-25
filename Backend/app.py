@@ -3,7 +3,7 @@ import os
 import json
 import pandas as pd
 import re
-from utils.Tokenizer import Tokenizer
+from utils.tokenizer import Tokenizer
 
 app = FastAPI()
 
@@ -27,7 +27,7 @@ def get_batch_file(offering_id):
     batch_index = (int(offering_id) - 1) // batch_size + 1
     return f"{REVIEWS_DIR}/reviews_batch_{batch_index}.json"
 
-
+# add lexicon file
 def rebuild_hotel_index(hotels):
     """Rebuild the inverted index for hotels."""
     inverted_index = {}
@@ -51,28 +51,28 @@ def rebuild_hotel_index(hotels):
         json.dump(inverted_index, f)
 
 
-@app.post("/index/reviews")
-async def rebuild_review_index():
-    try:
-        review_index = {}
-        reviews_dir = "reviews/"
+def rebuild_review_index():
+    pass
+    # try:
+    #     review_index = {}
+    #     reviews_dir = "reviews/"
 
-        for review_file in os.listdir(reviews_dir):
-            if review_file.endswith(".json"):
-                with open(os.path.join(reviews_dir, review_file), "r") as f:
-                    reviews = json.load(f)
-                    for i, review in enumerate(reviews):
-                        tokens = review["text"].lower().split()
-                        for token in tokens:
-                            review_id = f"{review['offering_id']}:{i}"
-                            review_index.setdefault(token, []).append(review_id)
+    #     for review_file in os.listdir(reviews_dir):
+    #         if review_file.endswith(".json"):
+    #             with open(os.path.join(reviews_dir, review_file), "r") as f:
+    #                 reviews = json.load(f)
+    #                 for i, review in enumerate(reviews):
+    #                     tokens = review["text"].lower().split()
+    #                     for token in tokens:
+    #                         review_id = f"{review['offering_id']}:{i}"
+    #                         review_index.setdefault(token, []).append(review_id)
 
-        with open(REVIEW_INDEX_FILE, "w") as f:
-            json.dump(review_index, f)
+    #     with open(REVIEW_INDEX_FILE, "w") as f:
+    #         json.dump(review_index, f)
 
-        return {"status": "success", "message": "Review index rebuilt successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    #     return {"status": "success", "message": "Review index rebuilt successfully"}
+    # except Exception as e:
+    #     raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/upload/hotels")
@@ -140,7 +140,7 @@ async def search_hotels(query: str):
     """Search for hotels using the query string."""
     try:
         tokenizer = Tokenizer()
-
+        
         # Load the inverted index
         if not os.path.exists(INVERTED_INDEX_FILE):
             raise HTTPException(status_code=400, detail="Inverted index not found")

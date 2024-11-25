@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
 import json
-from helper import remove_punctuation, remove_stopwords, remove_urls
+
+# from helper import remove_punctuation, remove_stopwords, remove_urls
 from Legacy import process_and_normalize_hotel_data
 
 
-def script_clean(file_path):
+def script_clean():
     normalize_and_input_csv()
-    process_and_normalize_hotel_data()
+    # process_and_normalize_hotel_data()
     return 1
 
 
@@ -20,7 +21,7 @@ def normalize_and_input_csv():
 
     def clean_json(x):
         "Create apply function for decoding JSON"
-        return json.loads(x, encoding="utf-8-sig")
+        return json.loads(x)  # removed the encoding argument
 
     for x in json_cols:
         df[x] = df[x].str.replace("'", '"')
@@ -40,20 +41,26 @@ def normalize_and_input_csv():
         ],
         axis=1,
     )
+
+    print(df.info())
+
     df["rev_id"] = range(1, len(df) + 1)
 
-    ## Lower Casing
+    # Lower Casing
     df["text"] = df["text"].str.lower()
     df["title"] = df["title"].str.lower()
 
-    df["text"] = df["text"].apply(lambda text: remove_punctuation(text))
-    df["title"] = df["title"].apply(lambda text: remove_punctuation(text))
+    # Removing the curly quotes
+    df["title"] = df["title"].str.replace("“", "").str.replace("”", "")
 
-    df["text"] = df["text"].apply(lambda text: remove_stopwords(text))
-    df["title"] = df["title"].apply(lambda text: remove_stopwords(text))
+    # df["text"] = df["text"].apply(lambda text: remove_punctuation(text))
+    # df["title"] = df["title"].apply(lambda text: remove_punctuation(text))
 
-    df["text"] = df["text"].apply(lambda text: remove_urls(text))
-    df["title"] = df["title"].apply(lambda text: remove_urls(text))
+    # df["text"] = df["text"].apply(lambda text: remove_stopwords(text))
+    # df["title"] = df["title"].apply(lambda text: remove_stopwords(text))
+
+    # df["text"] = df["text"].apply(lambda text: remove_urls(text))
+    # df["title"] = df["title"].apply(lambda text: remove_urls(text))
 
     print(df.info())
     print(df.head())
@@ -61,3 +68,6 @@ def normalize_and_input_csv():
     df.to_csv("../data/cleaned_reviews.csv", index=False)
 
     return df
+
+
+script_clean()

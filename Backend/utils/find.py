@@ -11,7 +11,7 @@ def find_key_by_value_in_csv(value, csv_file_path):
     return None
 
 # Example usage for CSV
-csv_file_path = "../dat/sorted_lexicon.csv"
+csv_file_path = "../data/sorted_lexicon.csv"
 key_in_csv = find_key_by_value_in_csv(value_to_find, csv_file_path)
 if key_in_csv:
     print(f"The key for value {value_to_find} in CSV is: {key_in_csv}")
