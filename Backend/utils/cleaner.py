@@ -4,14 +4,14 @@ import json
 import ast
 
 
-def round_to_half(x):
-    return np.round(x * 2) / 2
+def round_to_ones(x):
+    return np.round(x, 1)
 
 
 def normalize_and_input_csv():
     # Load datasets once
     reviews_df = pd.read_csv("../data/reviews.csv")
-    hotel_df = pd.read_csv("../data/cleaned_hotels.csv")
+    hotel_df = pd.read_csv("../data/hotels_cleaned.csv")
 
     # Clean JSON columns
     reviews_df["ratings"] = (
@@ -70,7 +70,7 @@ def normalize_and_input_csv():
         ]
     ]
 
-    reviews_df.to_csv("../data/cleaned_reviews.csv", index=False)
+    reviews_df.to_csv("../data/reviews_cleaned.csv", index=False)
     return reviews_df
 
 
@@ -105,7 +105,7 @@ def process_and_normalize_hotel_data():
         ]
 
         # Export the cleaned data to a new csv file
-        offerings_df.to_csv("../data/cleaned_hotels.csv", index=False)
+        offerings_df.to_csv("../data/hotels_cleaned.csv", index=False)
 
         # Process reviews data and clean
         reviews_df = normalize_and_input_csv()
@@ -154,16 +154,16 @@ def process_and_normalize_hotel_data():
             "rooms",
         ]
         hotels_grouped[numeric_columns] = hotels_grouped[numeric_columns].apply(
-            round_to_half
+            round_to_ones
         )
 
         # Calculate average score
         hotels_grouped["average_score"] = (
-            hotels_grouped[numeric_columns].mean(axis=1).apply(round_to_half)
+            hotels_grouped[numeric_columns].mean(axis=1).apply(round_to_ones)
         )
 
         # Export aggregated data
-        hotels_grouped.to_csv("../data/hotels_aggregated.csv", index=False)
+        hotels_grouped.to_csv("../data/hotels_cleaned.csv", index=False)
 
     except Exception as e:
         print("Error: ", e)
