@@ -1,37 +1,30 @@
 import pandas as pd
 import numpy as np
 import json
-
-# from helper import remove_punctuation, remove_stopwords, remove_urls
-from Legacy import process_and_normalize_hotel_data
+import ast
 
 
-def script_clean():
-    normalize_and_input_csv()
-    # process_and_normalize_hotel_data()
-    return 1
+def round_to_ones(x):
+    return np.round(x, 1)
 
 
 def normalize_and_input_csv():
-    # Import and view datasets to understand the content
-    df = pd.read_csv("../data/reviews.csv")
+    # Load datasets once
+    reviews_df = pd.read_csv("../data/reviews.csv")
+    hotel_df = pd.read_csv("../data/hotels_cleaned.csv")
 
-    # deconstruct json columns
-    json_cols = ["ratings"]
+    # Clean JSON columns
+    reviews_df["ratings"] = (
+        reviews_df["ratings"].str.replace("'", '"').apply(json.loads)
+    )
+    normalized_cols = pd.json_normalize(reviews_df["ratings"])
+    reviews_df = pd.concat(
+        [reviews_df.drop(columns=["ratings"]), normalized_cols], axis=1
+    )
 
-    def clean_json(x):
-        "Create apply function for decoding JSON"
-        return json.loads(x)  # removed the encoding argument
-
-    for x in json_cols:
-        df[x] = df[x].str.replace("'", '"')
-        df[x] = df[x].apply(clean_json)
-
-    normalized_cols = pd.json_normalize(df["ratings"])
-    df = df.join(normalized_cols)
-    df = df.drop(json_cols, axis=1)
-    df = df.drop(
-        [
+    # Drop unnecessary columns
+    reviews_df.drop(
+        columns=[
             "num_helpful_votes",
             "author",
             "via_mobile",
@@ -40,34 +33,145 @@ def normalize_and_input_csv():
             "business_service_(e_g_internet_access)",
         ],
         axis=1,
+        inplace=True,
     )
 
-    print(df.info())
+    # Add custom rev_id column
+    reviews_df["rev_id"] = range(1, len(reviews_df) + 1)
 
-    df["rev_id"] = range(1, len(df) + 1)
+    # Lowercase and remove curly quotes in text and title
+    reviews_df["text"] = reviews_df["text"].str.lower()
+    reviews_df["title"] = (
+        reviews_df["title"].str.lower().str.replace("“", "").str.replace("”", "")
+    )
 
-    # Lower Casing
-    df["text"] = df["text"].str.lower()
-    df["title"] = df["title"].str.lower()
+    # Add hotel_ids to the reviews
+    reviews_df = pd.merge(
+        reviews_df, hotel_df[["offering_id", "hotel_id"]], on="offering_id", how="left"
+    )
 
-    # Removing the curly quotes
-    df["title"] = df["title"].str.replace("“", "").str.replace("”", "")
+    # Select relevant columns
+    reviews_df = reviews_df[
+        [
+            "rev_id",
+            "hotel_id",
+            "offering_id",
+            "id",
+            "title",
+            "text",
+            "overall",
+            "date_stayed",
+            "value",
+            "location",
+            "cleanliness",
+            "service",
+            "sleep_quality",
+            "rooms",
+        ]
+    ]
 
-    # df["text"] = df["text"].apply(lambda text: remove_punctuation(text))
-    # df["title"] = df["title"].apply(lambda text: remove_punctuation(text))
+    reviews_df.to_csv("../data/reviews_cleaned.csv", index=False)
+    return reviews_df
 
-    # df["text"] = df["text"].apply(lambda text: remove_stopwords(text))
-    # df["title"] = df["title"].apply(lambda text: remove_stopwords(text))
 
-    # df["text"] = df["text"].apply(lambda text: remove_urls(text))
-    # df["title"] = df["title"].apply(lambda text: remove_urls(text))
+def process_and_normalize_hotel_data():
+    try:
+        # Load the hotels CSV files into pandas dataframes
+        offerings_df = pd.read_csv("../data/hotels.csv", encoding="utf-8-sig")
 
-    print(df.info())
-    print(df.head())
+        # Rename 'id' column in offerings_df to 'offering_id' for consistency
+        offerings_df.rename(columns={"id": "offering_id"}, inplace=True)
+        offerings_df["hotel_id"] = range(1, len(offerings_df) + 1)
 
-    df.to_csv("../data/cleaned_reviews.csv", index=False)
+        # Deconstruct JSON in address column
+        offerings_df["address"] = offerings_df["address"].apply(ast.literal_eval)
+        address_df = offerings_df["address"].apply(pd.Series)
+        offerings_df = pd.concat(
+            [offerings_df.drop(columns=["address"]), address_df], axis=1
+        )
 
-    return df
+        # Select relevant columns
+        offerings_df = offerings_df[
+            [
+                "hotel_id",
+                "offering_id",
+                "name",
+                "region_id",
+                "region",
+                "street-address",
+                "locality",
+                "hotel_class",
+            ]
+        ]
+
+        # Export the cleaned data to a new csv file
+        offerings_df.to_csv("../data/hotels_cleaned.csv", index=False)
+
+        # Process reviews data and clean
+        reviews_df = normalize_and_input_csv()
+
+        combined_df = pd.merge(
+            reviews_df, offerings_df, on=["offering_id", "hotel_id"], how="right"
+        )
+
+        # Group by hotel attributes and calculate mean for numeric columns
+        hotels_grouped = (
+            combined_df.groupby(
+                [
+                    "hotel_id",
+                    "offering_id",
+                    "name",
+                    "region_id",
+                    "region",
+                    "street-address",
+                    "locality",
+                    "hotel_class",
+                ],
+                dropna=False,
+            )
+            .agg(
+                {
+                    "service": "mean",
+                    "cleanliness": "mean",
+                    "overall": "mean",
+                    "value": "mean",
+                    "location": "mean",
+                    "sleep_quality": "mean",
+                    "rooms": "mean",
+                }
+            )
+            .reset_index()
+        )
+
+        # Round numeric columns to the nearest half
+        numeric_columns = [
+            "service",
+            "cleanliness",
+            "overall",
+            "value",
+            "location",
+            "sleep_quality",
+            "rooms",
+        ]
+        hotels_grouped[numeric_columns] = hotels_grouped[numeric_columns].apply(
+            round_to_ones
+        )
+
+        # Calculate average score
+        hotels_grouped["average_score"] = (
+            hotels_grouped[numeric_columns].mean(axis=1).apply(round_to_ones)
+        )
+
+        # Export aggregated data
+        hotels_grouped.to_csv("../data/hotels_cleaned.csv", index=False)
+
+    except Exception as e:
+        print("Error: ", e)
+
+
+def script_clean():
+    process_and_normalize_hotel_data()
+    return 0
 
 
 script_clean()
