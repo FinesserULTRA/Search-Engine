@@ -16,7 +16,8 @@ class Tokenizer:
 
     # Constructor
     def __init__(self):
-        nltk.download("stopwords")
+        # nltk.download("stopwords")
+        pass
 
     # Tokenization
     def tokenize(self, text):
