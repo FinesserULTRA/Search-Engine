@@ -10,7 +10,7 @@ app = FastAPI()
 # Constants
 REVIEWS_DIR = "./reviews/"
 HOTELS_FILE = "./data/hotels.json"
-LEXICON_FILE = "./index data/sorted_lexicon.csv"
+LEXICON_FILE = "./index data/lexicon_tokenize.json"
 INVERTED_INDEX_FILE = "./index data/inverted_index.json"
 REVIEW_INDEX_FILE = "./index data/review_index.json"
 

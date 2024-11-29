@@ -45,3 +45,4 @@ docs/_build/
 */index data/*
 */reviews/*
 *.vscode/
+**/*Zone.Identifier

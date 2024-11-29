@@ -2,10 +2,18 @@ import pandas as pd
 import numpy as np
 import json
 import ast
+import string
+
+PUNCT_TO_REMOVE = string.punctuation
 
 
 def round_to_ones(x):
     return np.round(x, 1)
+
+
+def remove_punctuation(text):
+    """custom function to remove the punctuation"""
+    return text.translate(str.maketrans("", "", PUNCT_TO_REMOVE))
 
 
 def normalize_and_input_csv():
@@ -41,10 +49,13 @@ def normalize_and_input_csv():
 
     # Lowercase and remove curly quotes in text and title
     reviews_df["text"] = reviews_df["text"].str.lower()
+    reviews_df["text"] = reviews_df["text"].apply(lambda text: remove_punctuation(text))
     reviews_df["title"] = (
         reviews_df["title"].str.lower().str.replace("“", "").str.replace("”", "")
     )
-
+    reviews_df["title"] = reviews_df["title"].apply(
+        lambda text: remove_punctuation(text)
+    )
     # Add hotel_ids to the reviews
     reviews_df = pd.merge(
         reviews_df, hotel_df[["offering_id", "hotel_id"]], on="offering_id", how="left"
