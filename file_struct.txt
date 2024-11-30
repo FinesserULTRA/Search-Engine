@@ -18,8 +18,8 @@ Backend/
 ├── data/
 │   ├── hotels.csv
 │   ├── reviews.csv
-│   ├── hotel_aggregated.csv
-│   └── cleaned.csv
+│   ├── hotels_cleaned.csv
+│   └── reviews_cleaned.csv
 ├── requirements.txt
 ├── README.md
 └── tests/
