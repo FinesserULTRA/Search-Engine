@@ -27,6 +27,7 @@ def get_batch_file(offering_id):
     batch_index = (int(offering_id) - 1) // batch_size + 1
     return f"{REVIEWS_DIR}/reviews_batch_{batch_index}.json"
 
+
 # add lexicon file
 def rebuild_hotel_index(hotels):
     """Rebuild the inverted index for hotels."""
@@ -140,7 +141,7 @@ async def search_hotels(query: str):
     """Search for hotels using the query string."""
     try:
         tokenizer = Tokenizer()
-        
+
         # Load the inverted index
         if not os.path.exists(INVERTED_INDEX_FILE):
             raise HTTPException(status_code=400, detail="Inverted index not found")

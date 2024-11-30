@@ -1,10 +1,9 @@
-import concurrent.futures
+import multiprocessing
 import time
 import pandas as pd
 import json
 import os
 from tokenizer import Tokenizer
-
 
 def tokenize_chunk(chunk, tokenizer):
     """
@@ -18,64 +17,70 @@ def tokenize_chunk(chunk, tokenizer):
             print(f"Error tokenizing text: {text[:100]} - {e}")
     return tokens
 
+def process_review_file(review_file, hotels_df, tokenizer):
+    try:
+        print(f"Processing file: {review_file}")
+        reviews_df = pd.read_csv(review_file, encoding="utf-8")
+        print(f"Loaded {len(reviews_df)} reviews from {review_file}")
+        combined_df = pd.merge(
+            reviews_df[["hotel_id", "title", "text"]],
+            hotels_df[["hotel_id", "name", "region", "street-address", "locality"]],
+            on="hotel_id",
+            how="right",
+        )
+        print(f"Merged dataset for {review_file}: {len(combined_df)} rows")
+        # Prepare text data for tokenization
+        columns_to_tokenize = ["name", "title", "text", "region", "street-address", "locality"]
+        string_to_tokenize = combined_df[columns_to_tokenize].apply(
+            lambda x: " ".join(x.dropna().astype(str)), axis=1
+        )
+        text_data = string_to_tokenize.tolist()
+        # Tokenize the text data
+        tokens = tokenize_chunk(text_data, tokenizer)
+        # Remove duplicates from the token list
+        tokens = list(set(tokens))
+        print(f"Total tokens for {review_file} (after removing duplicates): {len(tokens)}")
 
-if __name__ == "__main__":
+        # Save the tokens to a JSON file corresponding to each review file
+        lexicon = {word: idx for idx, word in enumerate(tokens)}
+        output_filename = f"../index data/lexicon_{os.path.basename(review_file).replace('.csv', '')}.json"
+        with open(output_filename, "w", encoding="utf-8-sig") as json_file:
+            json.dump(lexicon, json_file, indent=4)
+
+        print(f"Saved lexicon for {review_file} to {output_filename}")
+    except Exception as e:
+        print(f"Error processing file {review_file}: {e}")
+
+def run_process_independently(review_file, hotels_df_path):
     # Initialize tokenizer
     tk = Tokenizer()
+    # Load hotels dataset
+    hotels_df = pd.read_csv(hotels_df_path, encoding="utf-8")
+    # Process the review file
+    process_review_file(review_file, hotels_df, tk)
 
-    # Load datasets
-    reviews_df = pd.read_csv("../data/reviews_cleaned.csv", encoding="utf-8")
-    hotels_df = pd.read_csv("../data/hotels_cleaned.csv", encoding="utf-8")
+if __name__ == "__main__":
+    # Directory containing review files
+    reviews_dir = "../reviews"
+    review_files = [os.path.join(reviews_dir, f) for f in os.listdir(reviews_dir) if f.endswith(".csv")]
 
-    print(f"Hotels: {len(hotels_df)}")
-    print(f"Reviews: {len(reviews_df)}")
+    # Path to hotels dataset
+    hotels_df_path = "../data/hotels_cleaned.csv"
+    print(f"Found {len(review_files)} review files.")
 
-    # Merge datasets
-    combined_df = pd.merge(
-        reviews_df[["hotel_id", "title", "text"]],
-        hotels_df[["hotel_id", "name", "region", "street-address", "locality"]],
-        on="hotel_id",
-        how="right",
-    )
-
-    print(f"Combined records: {len(combined_df)}")
-
-    # Prepare text data for tokenization
-    columns_to_tokenize = ["name", "title", "text", "region", "street-address", "locality"]
-    string_to_tokenize = combined_df[columns_to_tokenize].apply(
-        lambda x: " ".join(x.dropna().astype(str)), axis=1
-    )
-    text_data = string_to_tokenize.tolist()
-
-    # Split text data into chunks
-    chunk_size = 2000
-    chunks = [text_data[i : i + chunk_size] for i in range(0, len(text_data), chunk_size)]
-
-    print(f"Processing {len(chunks)} chunks...")
-
-    # Process chunks in parallel
+    # Process each review file independently using multiprocessing
     t1 = time.time()
-    all_tokens = []
-    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
-        # Pass the tokenizer explicitly if it holds large state
-        results = executor.map(tokenize_chunk, chunks, [tk] * len(chunks))
+    processes = []
+    for review_file in review_files:
+        p = multiprocessing.Process(target=run_process_independently, args=(review_file, hotels_df_path))
+        p.start()
+        processes.append(p)
 
-        # Flatten results during processing to reduce memory usage
-        for token_list in results:
-            all_tokens.extend(token_list)
+    # Wait for all processes to complete
+    for p in processes:
+        p.join()
 
     t2 = time.time()
 
-    # Print results
+    # Print total time taken
     print(f"Total time taken: {round(t2 - t1, 2)} seconds")
-    print(f"Total tokens (before removing duplicates): {len(all_tokens)}")
-
-    # Remove duplicates
-    all_tokens = list(set(all_tokens))
-    print(f"Total tokens (after removing duplicates): {len(all_tokens)}")
-    print(f"Sample tokens: {all_tokens[:100]}")
-
-    # Save the tokens to a JSON file
-    lexicon = {word: idx for idx, word in enumerate(all_tokens)}
-    with open("../index data/lexicon_tokenize.json", "w", encoding="utf-8-sig") as json_file:
-        json.dump(lexicon, json_file, indent=4)
