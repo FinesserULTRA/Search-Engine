@@ -6,9 +6,15 @@ from nltk.stem import PorterStemmer
 from textblob import TextBlob
 import contractions
 import spacy
-import signal
+import json
+import pandas as pd
+from collections import defaultdict
+from pathlib import Path
+from multiprocessing import Pool, cpu_count
 from concurrent.futures import ProcessPoolExecutor
+
 # import spacy_transformers
+
 
 class Tokenizer:
     PUNCT_TO_REMOVE = string.punctuation
@@ -61,3 +67,44 @@ class Tokenizer:
             return wordnet.ADV
         else:
             return None
+
+
+class ForwardInverseIndexGenerator:
+    def __init__(self, review_files_path: str, index_data_path: str):
+        self.review_files_path = Path(review_files_path)
+        self.index_data_path = Path(index_data_path)
+
+    def process_review_file(self, file_path):
+        tokenizer = Tokenizer()
+        return tokenizer.process_large_text_parallel()
+
+    def generate_lexicon(self):
+        # Get list of review CSV files
+        review_files = list(self.review_files_path.glob("reviews_*.csv"))
+
+        # Use Pool to process files concurrently
+        with Pool(cpu_count()) as pool:
+            lexicons = pool.map(self.process_review_file, review_files)
+
+        # Combine individual lexicons into a single lexicon
+        combined_lexicon = defaultdict(int)
+        for lexicon in lexicons:
+            for word, count in lexicon.items():
+                combined_lexicon[word] += count
+
+        # Write the combined lexicon to a JSON file
+        with open(self.index_data_path / "forward.json", "w", encoding='utf-8-sig') as f:
+            json.dump(combined_lexicon, f)
+
+        return "Lexicon generation completed successfully!"
+
+
+def generate_lexicon():
+    generator = ForwardInverseIndexGenerator(
+        review_files_path="../reviews", index_data_path="../index data"
+    )
+    result = generator.generate_lexicon()
+    return {"message": result}
+
+
+print(generate_lexicon())
