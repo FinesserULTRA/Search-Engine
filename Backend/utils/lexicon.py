@@ -4,17 +4,18 @@ import pandas as pd
 import json
 from tokenizer import Tokenizer
 
+tk = Tokenizer()  # Initialize the Tokenizer
+
 
 # Function to tokenize text in parallel
 def tokenize_in_process(text_chunk):
-    tk = Tokenizer()  # Initialize the Tokenizer
-    print("done")
-    return tk.tokenize(text_chunk)
+    return tk.tokenize_with_spacy(text_chunk)
 
 
-if __name__ == "__main__":
-    reviews_df = pd.read_csv("test_reviews.csv")
-    hotels_df = pd.read_csv("hotels.csv")
+# if __name__ == "__main__":
+def create_lexicon():
+    reviews_df = pd.read_csv("../data/test_reviews.csv")
+    hotels_df = pd.read_csv("../data/test_hotels.csv")
 
     print(f"Hotels: {len(hotels_df)}")
     print(f"Reviews: {len(reviews_df)}")
@@ -71,15 +72,13 @@ if __name__ == "__main__":
     # Print the time taken and some sample tokens
     print(f"Total time taken: {round(t2 - t1, 2)} seconds")
     print(f"Total tokens (before removing duplicates): {len(all_tokens)}")
-    print(f"Total tokens (after removing duplicates): {len(set(all_tokens))}")
+    all_tokens = list(set(all_tokens))
+    print(f"Total tokens (after removing duplicates): {len(all_tokens)}")
     print(f"Some sample tokens: {all_tokens[:100]}")
 
-    all_tokens = list(set(all_tokens))
-
-    # Save the tokens to a json file
     # Create lexicon with word as key and ID as value
     lexicon = {word: idx for idx, word in enumerate(all_tokens)}
 
     # Save lexicon to a JSON file
-    with open("lexicon_tokenize.json", "w") as json_file:
+    with open("../index data/lexicon.json", "w") as json_file:
         json.dump(lexicon, json_file, indent=4)
