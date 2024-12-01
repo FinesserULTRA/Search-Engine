@@ -2,16 +2,15 @@ import re
 import string
 import nltk
 from nltk.corpus import stopwords, wordnet
-from nltk.stem import PorterStemmer
-from textblob import TextBlob
 import contractions
 import spacy
 import json
 import pandas as pd
 from collections import defaultdict
 from pathlib import Path
-from multiprocessing import Pool, cpu_count
-from concurrent.futures import ProcessPoolExecutor
+# =======================================================================
+# from multiprocessing import Pool, cpu_count
+# from concurrent.futures import ProcessPoolExecutor
 
 # import spacy_transformers
 
@@ -22,7 +21,7 @@ class Tokenizer:
 
     def __init__(self):
         nltk.download("stopwords", quiet=True)
-        # self.nlp = spacy.load("en_core_web_trf", disable=["ner", "parser"])
+        self.nlp = spacy.load("en_core_web_trf", disable=["ner", "parser"])
         self.nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
 
     def tokenize_with_spacy(self, text):
@@ -36,10 +35,11 @@ class Tokenizer:
         tokens = [token.lemma_ if token.pos_ != "NOUN" else token.text for token in doc]
         return tokens
 
-    def process_large_text_parallel(self, texts):
-        with ProcessPoolExecutor() as executor:
-            results = executor.map(self.tokenize_with_spacy, texts)
-        return [token for result in results for token in result]
+    # =======================================================================
+    # def process_large_text_parallel(self, texts):
+    #     with ProcessPoolExecutor() as executor:
+    #         results = executor.map(self.tokenize_with_spacy, texts)
+    #     return [token for result in results for token in result]
 
     def __remove_urls(self, text):
         url_pattern = re.compile(r"https?://\S+|www\.\S+")
@@ -83,14 +83,16 @@ class ForwardInverseIndexGenerator:
         review_files = list(self.review_files_path.glob("reviews_*.csv"))
 
         # Use Pool to process files concurrently
-        with Pool(cpu_count()) as pool:
-            lexicons = pool.map(self.process_review_file, review_files)
+        # =======================================================================
+        # with Pool(cpu_count()) as pool:
+        #     lexicons = pool.map(self.process_review_file, review_files)
 
         # Combine individual lexicons into a single lexicon
         combined_lexicon = defaultdict(int)
-        for lexicon in lexicons:
-            for word, count in lexicon.items():
-                combined_lexicon[word] += count
+        # =======================================================================
+        # for lexicon in lexicons:
+        #     for word, count in lexicon.items():
+        #         combined_lexicon[word] += count
 
         # Write the combined lexicon to a JSON file
         with open(self.index_data_path / "forward.json", "w", encoding='utf-8-sig') as f:
