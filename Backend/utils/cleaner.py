@@ -172,7 +172,10 @@ def process_and_normalize_hotel_data():
         hotels_grouped["average_score"] = (
             hotels_grouped[numeric_columns].mean(axis=1).apply(round_to_ones)
         )
-
+        for column in hotels_grouped.select_dtypes(include=['float64']).columns:
+            hotels_grouped[column] = hotels_grouped[column].astype(str)
+        hotels_grouped.fillna("", inplace=True)
+        hotels_grouped.set_index("hotel_id", inplace=False)
         # Export aggregated data
         hotels_grouped.to_csv("../data/hotels_cleaned.csv", index=False)
 

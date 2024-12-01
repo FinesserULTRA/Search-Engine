@@ -22,11 +22,24 @@ def tokenize(text):
     return tokenizer.tokenize_with_spacy(text)
 
 
-def get_batch_file(offering_id):
-    """Get the batch file name based on offering_id."""
-    batch_size = 1000
-    batch_index = (int(offering_id) - 1) // batch_size + 1
-    return f"{REVIEWS_DIR}/reviews_batch_{batch_index}.json"
+def get_batch_file(hotel_id: str):
+    """Determine the batch file containing reviews for the given hotel_id."""
+    # Define ranges and corresponding filenames
+    file_ranges = [
+        ("1", "1000", "./reviews/reviews_1-1000.csv"),
+        ("1001", "2000", "./reviews/reviews_1001-2000.csv"),
+        ("2001", "3000", "./reviews/reviews_2001-3000.csv"),
+        ("3001", "4000", "./reviews/reviews_3001-4000.csv"),
+        ("4001", "5000", "./reviews/reviews_4001-5000.csv"),
+    ]
+
+    # Find the file containing the hotel_id
+    for start, end, filename in file_ranges:
+        if start <= hotel_id <= end:
+            return filename
+
+    # If no file is found
+    return None
 
 
 # add lexicon file
@@ -154,61 +167,70 @@ async def search_hotels(query: str = Query(...)):
 
         # Tokenize query
         tokens = tokenizer.tokenize_with_spacy(query)
-        print(f"Tokens generated: {tokens}")
 
         matched_ids = set()
 
         for token in tokens:
             token_id = lexicon.get(token)
-            print(f"Token ID for '{token}': {token_id}")
             if token_id is not None and str(token_id) in inverted_index:
-                print(f"Token '{token}' with ID '{token_id}' found in inverted index.")
                 matched_ids.update(inverted_index[str(token_id)])
             else:
                 print(f"Token '{token}' not found in lexicon or index.")
-
-        print(f"Matched IDs: {matched_ids}")
 
         # Load hotels from CSV
         if not os.path.exists(HOTELS_FILE):
             raise HTTPException(status_code=400, detail="Hotels data file not found")
 
         hotels_df = pd.read_csv(HOTELS_FILE)
-        hotels_df["hotel_id"] = hotels_df["hotel_id"].astype(str)  # Ensure hotel_id is a string
-        hotels_df.fillna("", inplace=True)  # Replace NaN values
-        hotels_df.set_index("hotel_id", inplace=True)
+        hotels_df["hotel_id"] = hotels_df["hotel_id"].astype(
+            str
+        )  # Ensure hotel_id is a string
 
         # Filter results
         results = []
         for hotel_id in matched_ids:
-            if str(hotel_id) in hotels_df.index:  # Ensure matched_ids and index are strings
-                hotel_data = hotels_df.loc[str(hotel_id)].to_dict()
-                hotel_data = {k: "" if pd.isna(v) else v for k, v in hotel_data.items()}  # Replace NaN in dict
-                results.append(hotel_data)
+            if (
+                str(hotel_id) in hotels_df["hotel_id"].values
+            ):  # Ensure matched_ids are in values
+                hotel_row = (
+                    hotels_df[hotels_df["hotel_id"] == str(hotel_id)].iloc[0].to_dict()
+                )
+                hotel_row["hotel_id"] = str(hotel_id)  # Add hotel_id back to the result
+                results.append(hotel_row)
 
-        print(f"Results: {results}")
         return {"status": "success", "count": len(results), "results": results}
 
     except Exception as e:
         print(f"Error occurred: {e}")
-        raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
+        raise HTTPException(
+            status_code=500, detail="An error occurred while processing the request."
+        )
 
 
-
-@app.get("/hotel/{offering_id}/reviews")
-async def get_hotel_reviews(offering_id: str):
+@app.get("/hotel/{hotel_id}/reviews")
+async def get_hotel_reviews(hotel_id: str):
     """Retrieve reviews for a specific hotel."""
     try:
-        batch_file = get_batch_file(offering_id)
+        # Find the appropriate review file for the hotel_id
+        review_file = get_batch_file(hotel_id)
+        if review_file is None:
+            return {"status": "success", "reviews": []}
 
-        if os.path.exists(batch_file):
-            with open(batch_file, "r") as f:
-                batch = json.load(f)
-            reviews = batch.get(offering_id, [])
-        else:
-            reviews = []
+        # Load the review file
+        reviews_df = pd.read_csv(review_file, encoding="utf-8-sig")
 
-        return {"status": "success", "reviews": reviews}
+        # Filter reviews for the specific hotel_id
+        hotel_reviews = reviews_df[reviews_df["hotel_id"] == int(hotel_id)]
+
+        # Handle NaN values before returning the data
+        hotel_reviews = hotel_reviews.fillna("").to_dict(orient="records")
+
+        return {
+            "status": "success",
+            "num_reviews": len(hotel_reviews),
+            "reviews": hotel_reviews,
+        }
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -244,17 +266,31 @@ async def search_reviews(query: str):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/hotel/{offering_id}")
-async def get_hotel(offering_id: str):
-    """Retrieve metadata for a specific hotel."""
+@app.get("/hotel/{hotel_id}")
+async def get_hotel(hotel_id: str):
+    """
+    Retrieve details for a specific hotel by its hotel_id.
+    """
     try:
-        with open(HOTELS_FILE, "r") as f:
-            hotels = json.load(f)
+        # Load the CSV file into a DataFrame
+        hotels_df = pd.read_csv(HOTELS_FILE)
 
-        hotel = hotels.get(offering_id)
-        if not hotel:
-            raise HTTPException(status_code=404, detail="Hotel not found")
+        # Ensure hotel_id is treated as a string for comparison
+        hotels_df["hotel_id"] = hotels_df["hotel_id"].astype(str)
 
-        return {"status": "success", "hotel": hotel}
+        # Filter the DataFrame for the specific hotel_id
+        hotel_details = hotels_df[hotels_df["hotel_id"] == hotel_id]
+
+        # Check if hotel details are found
+        if hotel_details.empty:
+            raise HTTPException(status_code=404, detail=f"No hotel found with ID {hotel_id}")
+
+        # Convert the result to a dictionary
+        hotel_details_dict = hotel_details.iloc[0].to_dict()
+
+        return {"status": "success", "hotel_details": hotel_details_dict}
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail=f"File {HOTELS_FILE} not found")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
