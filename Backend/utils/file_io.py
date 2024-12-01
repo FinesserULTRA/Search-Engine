@@ -12,3 +12,10 @@ def write_json(file_path, data):
     """Writes JSON data to a file."""
     with open(file_path, "w", encoding='utf-8-sig') as f:
         json.dump(data, f)
+
+def search_tag(json_dict, tag):
+    value = json_dict.get(tag)
+    if value is not None:
+        return value
+    else:
+        return f"Tag '{tag}' not found in the JSON."
