@@ -1,18 +1,19 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, Query
 import os
 import json
 import pandas as pd
 import re
 from utils.tokenizer import Tokenizer
+from utils.file_io import search_tag
 
 app = FastAPI()
 
 # Constants
 REVIEWS_DIR = "./reviews/"
-HOTELS_FILE = "./data/hotels.json"
-LEXICON_FILE = "./index data/lexicon_tokenize.json"
-INVERTED_INDEX_FILE = "./index data/inverted_index.json"
-REVIEW_INDEX_FILE = "./index data/review_index.json"
+HOTELS_FILE = "./data/hotels_cleaned.csv"
+LEXICON_FILE = "./index data/combined_lexicon.json"
+HOTEL_INVERTED_INDEX = ".\\index data\\hotel_inverted_index.json"
+REVIEW_INVERTED_INDEX = "./index data/review_inverted_index.json"
 
 
 def tokenize(text):
@@ -48,7 +49,7 @@ def rebuild_hotel_index(hotels):
             inverted_index[token].append(str(offering_id))
 
     # Save the inverted index to a file
-    with open(INVERTED_INDEX_FILE, "w") as f:
+    with open(HOTEL_INVERTED_INDEX, "w") as f:
         json.dump(inverted_index, f)
 
 
@@ -68,7 +69,7 @@ def rebuild_review_index():
     #                         review_id = f"{review['offering_id']}:{i}"
     #                         review_index.setdefault(token, []).append(review_id)
 
-    #     with open(REVIEW_INDEX_FILE, "w") as f:
+    #     with open(REVIEW_INVERTED_INDEX, "w") as f:
     #         json.dump(review_index, f)
 
     #     return {"status": "success", "message": "Review index rebuilt successfully"}
@@ -137,45 +138,61 @@ async def upload_reviews():
 
 
 @app.get("/search/hotels")
-async def search_hotels(query: str):
+async def search_hotels(query: str = Query(...)):
     """Search for hotels using the query string."""
     try:
         tokenizer = Tokenizer()
+        print(f"Query received: {query}")
 
-        # Load the inverted index
-        if not os.path.exists(INVERTED_INDEX_FILE):
-            raise HTTPException(status_code=400, detail="Inverted index not found")
-
-        with open(INVERTED_INDEX_FILE, "r") as f:
+        # Load inverted index
+        with open(HOTEL_INVERTED_INDEX, "r", encoding="utf-8-sig") as f:
             inverted_index = json.load(f)
 
+        # Load lexicon
+        with open(LEXICON_FILE, "r", encoding="utf-8-sig") as f:
+            lexicon = json.load(f)
+
+        # Tokenize query
         tokens = tokenizer.tokenize_with_spacy(query)
-        print(f"Tokens from query: {tokens}")
+        print(f"Tokens generated: {tokens}")
 
         matched_ids = set()
 
         for token in tokens:
-            if token in inverted_index:
-                print(f"Token '{token}' found in index.")
-                matched_ids.update(inverted_index[token])
+            token_id = lexicon.get(token)
+            print(f"Token ID for '{token}': {token_id}")
+            if token_id is not None and str(token_id) in inverted_index:
+                print(f"Token '{token}' with ID '{token_id}' found in inverted index.")
+                matched_ids.update(inverted_index[str(token_id)])
             else:
-                print(f"Token '{token}' not found in index.")
+                print(f"Token '{token}' not found in lexicon or index.")
 
-        # Load hotels from hotels.json
+        print(f"Matched IDs: {matched_ids}")
+
+        # Load hotels from CSV
         if not os.path.exists(HOTELS_FILE):
             raise HTTPException(status_code=400, detail="Hotels data file not found")
 
-        with open(HOTELS_FILE, "r") as f:
-            hotels = json.load(f)
+        hotels_df = pd.read_csv(HOTELS_FILE)
+        hotels_df["hotel_id"] = hotels_df["hotel_id"].astype(str)  # Ensure hotel_id is a string
+        hotels_df.fillna("", inplace=True)  # Replace NaN values
+        hotels_df.set_index("hotel_id", inplace=True)
 
         # Filter results
-        results = [
-            hotels[str(hotel_id)] for hotel_id in matched_ids if str(hotel_id) in hotels
-        ]
+        results = []
+        for hotel_id in matched_ids:
+            if str(hotel_id) in hotels_df.index:  # Ensure matched_ids and index are strings
+                hotel_data = hotels_df.loc[str(hotel_id)].to_dict()
+                hotel_data = {k: "" if pd.isna(v) else v for k, v in hotel_data.items()}  # Replace NaN in dict
+                results.append(hotel_data)
 
+        print(f"Results: {results}")
         return {"status": "success", "count": len(results), "results": results}
+
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error occurred: {e}")
+        raise HTTPException(status_code=500, detail="An error occurred while processing the request.")
+
 
 
 @app.get("/hotel/{offering_id}/reviews")
@@ -200,7 +217,7 @@ async def get_hotel_reviews(offering_id: str):
 async def search_reviews(query: str):
     """Search reviews based on query."""
     try:
-        with open(REVIEW_INDEX_FILE, "r") as f:
+        with open(REVIEW_INVERTED_INDEX, "r") as f:
             review_index = json.load(f)
 
         tokens = query.lower().split()
