@@ -7,7 +7,8 @@ ENV/
 env.bak/
 venv.bak/
 
-
+*.json
+*.csv
 
 *__
 
@@ -41,8 +42,5 @@ db.sqlite3-journal
 # Sphinx documentation
 docs/_build/
 
-*/data/*
-*/index data/*
-*/reviews/*
 *.vscode/
 **/*Zone.Identifier
