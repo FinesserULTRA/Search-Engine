@@ -64,7 +64,7 @@ class InvertedIndexGenerator:
         for token_id, doc_ids in inverted_index.items():
             word = reverse_lexicon[token_id]
             barrel_index = self.get_barrel_index(word)
-            barrels[barrel_index][word] = doc_ids
+            barrels[barrel_index][token_id] = doc_ids
 
         return barrels
 
