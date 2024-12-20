@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MapPin, Search } from 'lucide-react';
+import { MapPin, Search } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -67,56 +67,60 @@ const SearchBar = () => {
     };
 
     return (
-        <div className="flex w-max-screen items-center border-2 border-secondaryclr bg-primaryclr rounded-full shadow-sm">
+        <div className="flex flex-col sm:flex-row w-full max-w-3xl mx-auto border-2 border-secondaryclr bg-primaryclr rounded-2xl sm:rounded-full shadow-sm overflow-hidden">
             <Input
                 type="text"
                 placeholder="Search your preferred hotel"
                 value={searchTerm}
                 onChange={handleSearchChange}
-                className="flex-1 font-sans border-none text-secondaryclr rounded-l-full h-12 pl-6 bg-primaryclr focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none"
+                className="flex-1 font-sans border-none text-secondaryclr h-12 px-6 bg-primaryclr focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none"
             />
-            <div className="border-l-2 border-l-secondaryclr h-6 mx-2" />
-            <Select onOpenChange={setIsSelectOpen} onValueChange={handleLocationSelect} value={selectedLocation || undefined}>
-                <SelectTrigger className="w-max border-none bg-primaryclr focus:outline-none focus:border-none focus:ring-0 focus:ring-offset-0 flex items-center space-x-2">
-                    <MapPin className="h-4 w-4 text-secondaryclr" />
-                    <SelectValue placeholder="Location" />
-                </SelectTrigger>
-                <SelectContent className="max-h-60 max-w overflow-y-auto">
-                    <div className="p-2">
-                        <Input
-                            type="text"
-                            placeholder="Search location"
-                            value={locationSearchTerm}
-                            onChange={handleLocationSearchChange}
-                            className="mb-2 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none"
-                            ref={locationInputRef}
-                            onKeyDown={(e) => e.stopPropagation()}
-                        />
-                    </div>
-                    {filteredLocations.map((location) => (
-                        <SelectItem key={location.value} value={location.value}>
-                            {location.label}
-                        </SelectItem>
-                    ))}
-                    {filteredLocations.length === 0 && (
-                        <div className="p-2 text-sm text-gray-500">
-                            No locations found
+            <div className="hidden sm:block border-l-2 border-l-secondaryclr h-6 mx-2 self-center" />
+            <div className="flex items-center justify-between sm:justify-start w-full sm:w-auto">
+                <Select
+                    onOpenChange={setIsSelectOpen}
+                    onValueChange={handleLocationSelect}
+                    value={selectedLocation || undefined}
+                >
+                    <SelectTrigger className="w-full sm:w-40 border-none bg-primaryclr focus:outline-none focus:border-none focus:ring-0 focus:ring-offset-0 flex items-center space-x-2 h-12 px-6">
+                        <MapPin className="h-4 w-4 text-secondaryclr" />
+                        <SelectValue placeholder="Location" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60 max-w overflow-y-auto">
+                        <div className="p-2">
+                            <Input
+                                type="text"
+                                placeholder="Search location"
+                                value={locationSearchTerm}
+                                onChange={handleLocationSearchChange}
+                                className="mb-2 focus:outline-none focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-none"
+                                ref={locationInputRef}
+                                onKeyDown={(e) => e.stopPropagation()}
+                            />
                         </div>
-                    )}
-                </SelectContent>
-            </Select>
-            <div className="border-l-2 border-l-secondaryclr h-6 mx-2" />
-            <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full h-12 w-12 mr-1 text-secondaryclr hover:bg-transparent hover:border-none duration-200 focus:outline-none focus:ring-0"
-            >
-                <Search className="h-5 w-5" />
-                <span className="sr-only">Search</span>
-            </Button>
+                        {filteredLocations.map((location) => (
+                            <SelectItem key={location.value} value={location.value}>
+                                {location.label}
+                            </SelectItem>
+                        ))}
+                        {filteredLocations.length === 0 && (
+                            <div className="p-2 text-sm text-gray-500">
+                                No locations found
+                            </div>
+                        )}
+                    </SelectContent>
+                </Select>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-12 w-12 text-secondaryclr hover:bg-transparent hover:border-none duration-200 focus:outline-none focus:ring-0"
+                >
+                    <Search className="h-5 w-5" />
+                    <span className="sr-only">Search</span>
+                </Button>
+            </div>
         </div>
     );
 };
 
 export default SearchBar;
-
