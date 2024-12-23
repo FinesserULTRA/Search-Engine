@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MapPin, Search } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
     Select,
     SelectContent,
@@ -33,6 +34,7 @@ const locations = [
 ];
 
 const SearchBar = () => {
+    const navigate = useNavigate();
     globalStyles();
     const [searchTerm, setSearchTerm] = useState("");
     const [locationSearchTerm, setLocationSearchTerm] = useState("");
@@ -110,10 +112,12 @@ const SearchBar = () => {
                         )}
                     </SelectContent>
                 </Select>
+                <div className="hidden sm:block border-l-2 border-l-secondaryclr h-6 mx-2 self-center" />
                 <Button
                     variant="ghost"
                     size="icon"
                     className="h-12 w-12 text-secondaryclr hover:bg-transparent hover:border-none duration-200 focus:outline-none focus:ring-0"
+                    onClick={() => navigate("/search")}
                 >
                     <Search className="h-5 w-5" />
                     <span className="sr-only">Search</span>
