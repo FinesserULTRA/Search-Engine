@@ -45,7 +45,7 @@ class Tokenizer:
         return url_pattern.sub(r"", text)
 
     def __remove_punctuation(self, text):
-        return text.translate(str.maketrans("", "", self.PUNCT_TO_REMOVE))
+        return text.translate(str.maketrans(self.PUNCT_TO_REMOVE, " " * len(self.PUNCT_TO_REMOVE)))
 
     def __remove_stopwords(self, text):
         return " ".join(
