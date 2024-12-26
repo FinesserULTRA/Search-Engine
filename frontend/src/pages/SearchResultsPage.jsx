@@ -14,7 +14,7 @@ const hotels = Array(10).fill({
 function SearchResultsPage() {
   return (
     <div className="min-h-screen w-full bg-primaryclr p-8">
-      <div className="max-w-7xl mx-auto min-w-[320px] space-y-8">
+      <div className="max-w-full mx-auto min-w-[320px] space-y-8">
         <div className="flex justify-center w-full px-4">
           <div className="w-full max-w-4xl">
             <SearchBar />
