@@ -6,7 +6,7 @@ import AddReviewForm from "@/components/AddReviewForm";
 import { Button } from "@/components/ui/button";
 
 const hotelData = {
-    name: "Casablanca Hotel By Library Hotel Collection",
+    name: "Casablanca Hotel Times Square",
     region: "New York",
     street_address: "147 West 43rd Street",
     locality: "New York City",

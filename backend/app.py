@@ -59,17 +59,17 @@ class HotelCreate(BaseModel):
     name: str
     region_id: str
     region: str
-    street_address: str = Field(..., alias="street-address")
+    street_address: str = Field(...)
     locality: str
-    hotel_class: float
-    service: float
-    cleanliness: float
-    overall: float
-    value: float
-    location: float
-    sleep_quality: float
-    rooms: float
-    average_score: float = None
+    hotel_class: Optional[float]
+    service: Optional[float]
+    cleanliness: Optional[float]
+    overall: Optional[float]
+    value: Optional[float]
+    location: Optional[float]
+    sleep_quality: Optional[float]
+    rooms: Optional[float]
+    average_score: Optional[float] = None
 
 
 # Cache utilities

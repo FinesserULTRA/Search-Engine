@@ -1,7 +1,7 @@
 import time
 from functools import lru_cache
 import json
-from Backend.utils.file_io import search_tag, search_value
+from backend.utils.file_io import search_tag, search_value
 
 def measure_time(func, *args):
     start_time = time.time()
@@ -24,22 +24,22 @@ def load_json(file_path):
 
 
 if __name__ == "__main__":
-    file_path = "C:\\Users\\PC\\VSCODE\\Search-Engine\\Backend\\index data\\lexicon\\lexicon.json"
+    file_path = "/home/ultra/dev/DSAProj/Search-Engine/backend/index data/lexicon/lexicon.json"
 
     # First call
     result, duration = measure_time(load_json, file_path)
     print(f"First call - Time to open and load JSON: {duration} seconds")
 
-    # Second call
-    result, duration = measure_time(load_json, file_path)
-    print(f"Second call - Time to open and load JSON: {duration} seconds")
+    # # Second call
+    # result, duration = measure_time(load_json, file_path)
+    # print(f"Second call - Time to open and load JSON: {duration} seconds")
 
-    # Second call
-    result, duration = measure_time(load_json, file_path)
-    print(f"Third call - Time to open and load JSON: {duration} seconds")
-    # print(result)
+    # # Second call
+    # result, duration = measure_time(load_json, file_path)
+    # print(f"Third call - Time to open and load JSON: {duration} seconds")
+    # # print(result)
     tag = "good"
-    val = 99587
+    val = 679594
     print(f"{tag}: {search_tag(result, tag)}")
     print(f"{val}: {search_value(result, val)}")
     # print(load_json(file_path))

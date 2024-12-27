@@ -22,15 +22,16 @@ const globalStyles = globalCss({
 const locations = [
     { value: "all", label: "Anywhere" },
     { value: "new-york", label: "New York" },
-    { value: "london", label: "London" },
-    { value: "paris", label: "Paris" },
-    { value: "tokyo", label: "Tokyo" },
-    { value: "berlin", label: "Berlin" },
-    { value: "rome", label: "Rome" },
-    { value: "madrid", label: "Madrid" },
-    { value: "amsterdam", label: "Amsterdam" },
-    { value: "barcelona", label: "Barcelona" },
-    { value: "vienna", label: "Vienna" },
+    { value: "california", label: "California" },
+    { value: "texas", label: "Texas" },
+    { value: "florida", label: "Florida" },
+    { value: "illinois", label: "Illinois" },
+    { value: "pennsylvania", label: "Pennsylvania" },
+    { value: "ohio", label: "Ohio" },
+    { value: "georgia", label: "Georgia" },
+    { value: "michigan", label: "Michigan" },
+    { value: "north-carolina", label: "North Carolina" },
+    { value: "new-jersey", label: "New Jersey" }
 ];
 
 const SearchBar = () => {
@@ -42,6 +43,19 @@ const SearchBar = () => {
     const [selectedLocation, setSelectedLocation] = useState(null);
     const [isSelectOpen, setIsSelectOpen] = useState(false);
     const locationInputRef = useRef(null);
+
+    const handleSearch = () => {
+        fetch(`http://127.0.0.1:8000/search?query=${searchTerm}&type=hotels`, {
+            method: "GET",
+        })
+            .then((res) => res.json())
+            .then((data) => {
+                navigate("/search", { state: { data } });
+            })
+            .catch((err) => {
+                console.log(err);
+            });
+    }
 
     useEffect(() => {
         if (isSelectOpen && locationInputRef.current) {
@@ -117,7 +131,7 @@ const SearchBar = () => {
                     variant="ghost"
                     size="icon"
                     className="h-12 w-12 text-secondaryclr hover:bg-transparent hover:border-none duration-200 focus:outline-none focus:ring-0"
-                    onClick={() => navigate("/search")}
+                    onClick={() => handleSearch()}
                 >
                     <Search className="h-5 w-5" />
                     <span className="sr-only">Search</span>
