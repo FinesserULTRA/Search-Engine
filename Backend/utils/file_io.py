@@ -42,3 +42,10 @@ def search_tag(json_dict, tag):
         return value
     else:
         return f"Tag '{tag}' not found in the JSON."
+
+def search_value(json_dict, value):
+    tags = [tag for tag, val in json_dict.items() if val == value]
+    if tags:
+        return tags
+    else:
+        return f"Value '{value}' not found in the JSON."

@@ -176,6 +176,12 @@ def process_and_normalize_hotel_data():
             hotels_grouped[column] = hotels_grouped[column].astype(str)
         hotels_grouped.fillna("", inplace=True)
         hotels_grouped.set_index("hotel_id", inplace=False)
+
+        # Add review counts
+        review_counts = reviews_df.groupby('hotel_id').size().reset_index(name='review_count')
+        hotels_grouped = pd.merge(hotels_grouped, review_counts, on='hotel_id', how='left')
+        hotels_grouped['review_count'] = hotels_grouped['review_count'].replace(np.nan, 0).astype(int)
+
         # Export aggregated data
         hotels_grouped.to_csv("../data/hotels_cleaned.csv", index=False)
 
