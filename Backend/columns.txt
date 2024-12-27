@@ -1,0 +1,42 @@
+hotel columns:
+hotel_id,
+offering_id,
+name,
+region_id,
+region,
+street-address,
+locality,
+hotel_class,
+service,
+cleanliness,
+overall,value,
+location,
+sleep_quality,
+rooms,
+average_score
+
+hotel Columns in lexicon
+name,
+region,
+street-address,
+locality,
+
+Reviews Columns:
+"rev_id",
+"hotel_id",
+"offering_id",
+"id",
+"title",
+"text",
+"overall",
+"date_stayed",
+"value",
+"location",
+"cleanliness",
+"service",
+"sleep_quality",
+"rooms"
+
+Reviews Columns in lexicon
+"title",
+"text",

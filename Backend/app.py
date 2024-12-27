@@ -1,296 +1,350 @@
 from fastapi import FastAPI, UploadFile, HTTPException, Query
-import os
-import json
-import pandas as pd
-import re
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from functools import lru_cache
 from utils.tokenizer import Tokenizer
-from utils.file_io import search_tag
-
-app = FastAPI()
+from utils.file_io import read_json, write_json, read_csv, write_csv
+from utils.batch_cache import get_doc_ids_for_token
+import pandas as pd
+import os
+from typing import List, Dict
+import numpy as np
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+import json
+# Initialize FastAPI and configurations
+app = FastAPI(title="Hotel Search Engine")
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
+)
 
 # Constants
-REVIEWS_DIR = "./reviews/"
-HOTELS_FILE = "./data/hotels_cleaned.csv"
-LEXICON_FILE = "./index data/combined_lexicon.json"
-HOTEL_INVERTED_INDEX = ".\\index data\\hotel_inverted_index.json"
-REVIEW_INVERTED_INDEX = "./index data/review_inverted_index.json"
+DATA_DIR = "./data"
+INDEX_DIR = "./index data"
+REVIEWS_DIR = "./reviews"
+BATCH_SIZE = 50000
+# MAX_RESULTS = 1000
+
+PATHS = {
+    "HOTELS": f"{DATA_DIR}/hotels_cleaned.csv",
+    "LEXICON": f"{INDEX_DIR}/lexicon/final/combined_lexicon.json",
+    "FORWARD_INDEX": f"{INDEX_DIR}/forward_index",
+    "INVERTED_INDEX": f"{INDEX_DIR}/inverted_index",
+}
+
+# Initialize directories
+for dir_path in [DATA_DIR, REVIEWS_DIR, INDEX_DIR, f"{INDEX_DIR}/lexicon"]:
+    os.makedirs(dir_path, exist_ok=True)
+
+# Initialize shared services
+tokenizer = Tokenizer()  # Use original Tokenizer
 
 
-def tokenize(text):
-    """Tokenizes input text."""
-    tokenizer = Tokenizer()
-    return tokenizer.tokenize_with_spacy(text)
+# Models
+class ReviewCreate(BaseModel):
+    title: str
+    text: str
+    rating: float = None
 
 
-def get_batch_file(hotel_id: str):
-    """Determine the batch file containing reviews for the given hotel_id."""
-    # Define ranges and corresponding filenames
-    file_ranges = [
-        ("1", "1000", "./reviews/reviews_1-1000.csv"),
-        ("1001", "2000", "./reviews/reviews_1001-2000.csv"),
-        ("2001", "3000", "./reviews/reviews_2001-3000.csv"),
-        ("3001", "4000", "./reviews/reviews_3001-4000.csv"),
-        ("4001", "5000", "./reviews/reviews_4001-5000.csv"),
-    ]
-
-    # Find the file containing the hotel_id
-    for start, end, filename in file_ranges:
-        if start <= hotel_id <= end:
-            return filename
-
-    # If no file is found
-    return None
+# Cache utilities
+@lru_cache(maxsize=1)
+def get_hotels_df():
+    return read_csv(PATHS["HOTELS"])
 
 
-# add lexicon file
-def rebuild_hotel_index(hotels):
-    """Rebuild the inverted index for hotels."""
-    inverted_index = {}
-    tokenizer = Tokenizer()
-    for offering_id, hotel in hotels.items():
-        # Tokenize relevant fields
-        tokens = (
-            tokenizer.tokenize_with_spacy(hotel["name"])
-            + tokenizer.tokenize_with_spacy(hotel["region"])
-            + tokenizer.tokenize_with_spacy(hotel.get("locality", ""))
-            + tokenizer.tokenize_with_spacy(hotel.get("street-address", ""))
-        )
+@lru_cache(maxsize=1)
+def get_lexicon():
+    return read_json(PATHS["LEXICON"])
 
+
+def get_batch_range(word_id: int) -> tuple:
+    batch_start = (word_id // BATCH_SIZE) * BATCH_SIZE
+    batch_end = batch_start + BATCH_SIZE - 1
+    return batch_start, batch_end
+
+
+def get_review_batch_file(hotel_id: int) -> str:
+    batch_start = ((hotel_id - 1) // 1000) * 1000 + 1
+    batch_end = batch_start + 999
+    return f"{REVIEWS_DIR}/reviews_{batch_start}-{batch_end}.csv"
+
+
+@lru_cache(maxsize=1000)
+def get_reviews_from_batch(batch_file: str, hotel_id: int = None) -> List[Dict]:
+    reviews_df = read_csv(batch_file)
+    if reviews_df.empty:
+        return []
+    if hotel_id is not None:
+        reviews_df = reviews_df[reviews_df["hotel_id"] == hotel_id]
+    return reviews_df.replace([np.inf, -np.inf, np.nan], None).to_dict("records")
+
+
+def get_index_batch_path(word_id: int, doc_type: str) -> str:
+    """Get the correct inverted index batch file path for a word ID"""
+    batch_start = (word_id // 50000) * 50000
+    batch_end = batch_start + 49999
+    return f"{PATHS['INVERTED_INDEX']}/{doc_type}/inverted_index_{batch_start}-{batch_end}.json"
+
+@lru_cache(maxsize=100)
+def get_doc_ids_for_word(word: str, doc_type: str) -> set:
+    """Get document IDs for a word using batched indices"""
+    try:
+        # Get word ID from lexicon
+        lexicon = get_lexicon()
+        word_id = lexicon.get(word)
+        if not word_id:
+            return set()
+            
+        # Get correct batch file
+        batch_file = get_index_batch_path(word_id, doc_type)
+        if not os.path.exists(batch_file):
+            return set()
+            
+        # Get document IDs
+        with open(batch_file, 'r', encoding='utf-8-sig') as f:
+            index_batch = json.load(f)
+            return set(index_batch.get(str(word_id), []))
+            
+    except Exception as e:
+        print(f"Error getting docs for word {word}: {e}")
+        return set()
+
+def get_doc_ids(word_id: int, doc_type: str) -> set:
+    """Get document IDs from the correct inverted index batch"""
+    batch_start = (word_id // 50000) * 50000
+    batch_end = batch_start + 49999
+    batch_file = f"{PATHS['INVERTED_INDEX']}/{doc_type}/inverted_index_{batch_start}-{batch_end}.json"
+    
+    try:
+        with open(batch_file, 'r', encoding='utf-8-sig') as f:
+            index_batch = json.load(f)
+            return set(index_batch.get(str(word_id), []))
+    except FileNotFoundError:
+        print(f"Batch file not found: {batch_file}")
+        return set()
+
+@app.get("/search")
+async def search(query: str = Query(...), type: str = Query("hotels")):
+    """Simple search using inverted index batches"""
+    try:
+        # Get token IDs from lexicon
+        tokens = tokenizer.tokenize_with_spacy(query.lower())
+        if not tokens:
+            return {"results": [], "count": 0}
+            
+        # Get word IDs from lexicon
+        lexicon = get_lexicon()
+        token_ids = []
         for token in tokens:
-            if token not in inverted_index:
-                inverted_index[token] = []
-            inverted_index[token].append(str(offering_id))
+            if token in lexicon:
+                token_ids.append(lexicon[token])
+                
+        if not token_ids:
+            return {"results": [], "count": 0}
+            
+        # Get matching documents
+        all_doc_ids = [get_doc_ids(token_id, type) for token_id in token_ids]
+        if not all_doc_ids:
+            return {"results": [], "count": 0}
+            
+        # Intersect results (AND search)
+        matched_ids = set.intersection(*all_doc_ids)
+        if not matched_ids:
+            return {"results": [], "count": 0}
+            
+        # Return results based on type
+        if type == "hotels":
+            # Get hotel details
+            hotels_df = get_hotels_df()
+            results = (hotels_df[hotels_df['hotel_id'].astype(str).isin(matched_ids)]
+                      .replace([np.inf, -np.inf, np.nan], None)
+                      .to_dict('records'))
+            return {"results": results, "count": len(results)}
+            
+        else:  # reviews
+            results = []
+            hotels_df = get_hotels_df()
+            
+            # Process each matching review
+            for review_id in matched_ids:
+                try:
+                    hotel_id = review_id.split(':')[0]
+                    batch_file = get_review_batch_file(int(hotel_id))
+                    
+                    if os.path.exists(batch_file):
+                        # Get hotel info
+                        hotel_info = hotels_df[
+                            hotels_df['hotel_id'].astype(str) == hotel_id
+                        ].iloc[0].to_dict() if hotel_id in hotels_df['hotel_id'].astype(str).values else None
+                        
+                        # Get reviews
+                        if hotel_info:
+                            reviews = get_reviews_from_batch(batch_file)
+                            for review in reviews:
+                                review['hotel'] = hotel_info
+                                results.append(review)
+                                
+                        if len(results) >= 1000:
+                            break
+                except:
+                    continue
+            
+            return {
+                "results": results[:1000],
+                "count": len(results),
+                "hotels_with_reviews": len({r.get('hotel', {}).get('hotel_id') for r in results})
+            }
+            
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
-    # Save the inverted index to a file
-    with open(HOTEL_INVERTED_INDEX, "w") as f:
-        json.dump(inverted_index, f)
-
-
-def rebuild_review_index():
-    pass
-    # try:
-    #     review_index = {}
-    #     reviews_dir = "reviews/"
-
-    #     for review_file in os.listdir(reviews_dir):
-    #         if review_file.endswith(".json"):
-    #             with open(os.path.join(reviews_dir, review_file), "r") as f:
-    #                 reviews = json.load(f)
-    #                 for i, review in enumerate(reviews):
-    #                     tokens = review["text"].lower().split()
-    #                     for token in tokens:
-    #                         review_id = f"{review['offering_id']}:{i}"
-    #                         review_index.setdefault(token, []).append(review_id)
-
-    #     with open(REVIEW_INVERTED_INDEX, "w") as f:
-    #         json.dump(review_index, f)
-
-    #     return {"status": "success", "message": "Review index rebuilt successfully"}
-    # except Exception as e:
-    #     raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/upload/hotels")
-async def upload_hotels(file: UploadFile):
-    """Upload hotel metadata and update inverted index."""
+@app.post("/hotels", status_code=201)
+async def create_hotels(file: UploadFile):
+    """Add new hotels"""
     try:
         df = pd.read_csv(file.file)
-        hotels = {}
-        required_columns = ["offering_id", "name", "region", "locality"]
+        hotels_df = get_hotels_df()
 
-        # Load existing hotel data
-        if os.path.exists(HOTELS_FILE):
-            with open(HOTELS_FILE, "r") as f:
-                hotels = json.load(f)
-
-        # Add new hotels
+        # Update forward and inverted indices
         for _, row in df.iterrows():
-            hotel = row.to_dict()
-            hotels[hotel["offering_id"]] = hotel
+            hotel_data = row.to_dict()
+            text = f"{hotel_data['name']} {hotel_data['locality']} {hotel_data['street-address']} {hotel_data['region']}"
 
-        # Save updated hotel data
-        with open(HOTELS_FILE, "w") as f:
-            json.dump(hotels, f)
+            # Get token IDs
+            tokens = tokenizer.tokenize_with_spacy(text)
+            lexicon = get_lexicon()
+            token_ids = [lexicon[token] for token in tokens if token in lexicon]
 
-        # Update inverted index
-        rebuild_hotel_index(hotels)
-        return {"status": "success", "message": "Hotels uploaded and indexed"}
+            # Update forward index
+            forward_file = f"{PATHS['FORWARD_INDEX']}/hotels/forward_index_latest.json"
+            forward_index = read_json(forward_file)
+            forward_index[str(hotel_data["hotel_id"])] = token_ids
+            write_json(forward_file, forward_index)
+
+            # Update inverted indices by batch
+            for token_id in token_ids:
+                batch_start, batch_end = get_batch_range(token_id)
+                batch_file = f"{PATHS['INVERTED_INDEX']}/hotels/inverted_index_{batch_start}-{batch_end}.json"
+
+                inverted_index = read_json(batch_file)
+                if str(token_id) not in inverted_index:
+                    inverted_index[str(token_id)] = []
+
+                if str(hotel_data["hotel_id"]) not in inverted_index[str(token_id)]:
+                    inverted_index[str(token_id)].append(str(hotel_data["hotel_id"]))
+
+                write_json(batch_file, inverted_index)
+
+        # Update hotels file
+        updated_df = pd.concat([hotels_df, df], ignore_index=True)
+        write_csv(PATHS["HOTELS"], updated_df)
+        get_hotels_df.cache_clear()
+
+        return {"status": "success", "message": f"Added {len(df)} hotels"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/upload/reviews")
-async def upload_reviews():
-    """Upload reviews and partition them into batches."""
-    os.makedirs(REVIEWS_DIR, exist_ok=True)
+@app.post("/reviews/{hotel_id}", status_code=201)
+async def create_review(hotel_id: str, review: ReviewCreate):
+    """Add new review"""
     try:
-        # for chunk in pd.read_csv(file.file, chunksize=1000):
-        for chunk in pd.read_csv("./data/cleaned_reviews.csv", chunksize=1000):
-            for _, row in chunk.iterrows():
-                review = row.to_dict()
-                batch_file = get_batch_file(review["offering_id"])
+        hotels_df = get_hotels_df()
+        hotel_id_int = int(hotel_id)
 
-                # Load or create batch file
-                try:
-                    with open(batch_file, "r") as f:
-                        batch = json.load(f)
-                except FileNotFoundError:
-                    batch = {}
+        if str(hotel_id_int) not in hotels_df["hotel_id"].astype(str).values:
+            raise HTTPException(status_code=404, detail="Hotel not found")
 
-                # Append review to the corresponding hotel
-                batch.setdefault(review["offering_id"], []).append(review)
+        review_dict = review.dict()
+        review_id = f"{hotel_id}:{pd.Timestamp.now().timestamp()}"
+        text = f"{review.title} {review.text}"
 
-                # Save updated batch file
-                with open(batch_file, "w") as f:
-                    json.dump(batch, f)
+        # Get token IDs
+        tokens = tokenizer.tokenize_with_spacy(text)
+        lexicon = get_lexicon()
+        token_ids = [lexicon[token] for token in tokens if token in lexicon]
 
-        rebuild_review_index()
-        return {"status": "success", "message": "Reviews uploaded and indexed"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        # Update forward index
+        forward_file = f"{PATHS['FORWARD_INDEX']}/reviews/forward_index_latest.json"
+        forward_index = read_json(forward_file)
+        forward_index[review_id] = token_ids
+        write_json(forward_file, forward_index)
 
+        # Update inverted indices
+        for token_id in token_ids:
+            batch_start, batch_end = get_batch_range(token_id)
+            batch_file = f"{PATHS['INVERTED_INDEX']}/reviews/inverted_index_{batch_start}-{batch_end}.json"
 
-@app.get("/search/hotels")
-async def search_hotels(query: str = Query(...)):
-    """Search for hotels using the query string."""
-    try:
-        tokenizer = Tokenizer()
-        print(f"Query received: {query}")
+            inverted_index = read_json(batch_file)
+            if str(token_id) not in inverted_index:
+                inverted_index[str(token_id)] = []
 
-        # Load inverted index
-        with open(HOTEL_INVERTED_INDEX, "r", encoding="utf-8-sig") as f:
-            inverted_index = json.load(f)
+            if review_id not in inverted_index[str(token_id)]:
+                inverted_index[str(token_id)].append(review_id)
 
-        # Load lexicon
-        with open(LEXICON_FILE, "r", encoding="utf-8-sig") as f:
-            lexicon = json.load(f)
+            write_json(batch_file, inverted_index)
 
-        # Tokenize query
-        tokens = tokenizer.tokenize_with_spacy(query)
+        # Save review to batch file
+        batch_file = get_review_batch_file(hotel_id_int)
+        reviews_df = read_csv(batch_file)
 
-        matched_ids = set()
-
-        for token in tokens:
-            token_id = lexicon.get(token)
-            if token_id is not None and str(token_id) in inverted_index:
-                matched_ids.update(inverted_index[str(token_id)])
-            else:
-                print(f"Token '{token}' not found in lexicon or index.")
-
-        # Load hotels from CSV
-        if not os.path.exists(HOTELS_FILE):
-            raise HTTPException(status_code=400, detail="Hotels data file not found")
-
-        hotels_df = pd.read_csv(HOTELS_FILE)
-        hotels_df["hotel_id"] = hotels_df["hotel_id"].astype(
-            str
-        )  # Ensure hotel_id is a string
-
-        # Filter results
-        results = []
-        for hotel_id in matched_ids:
-            if (
-                str(hotel_id) in hotels_df["hotel_id"].values
-            ):  # Ensure matched_ids are in values
-                hotel_row = (
-                    hotels_df[hotels_df["hotel_id"] == str(hotel_id)].iloc[0].to_dict()
-                )
-                hotel_row["hotel_id"] = str(hotel_id)  # Add hotel_id back to the result
-                results.append(hotel_row)
-
-        return {"status": "success", "count": len(results), "results": results}
-
-    except Exception as e:
-        print(f"Error occurred: {e}")
-        raise HTTPException(
-            status_code=500, detail="An error occurred while processing the request."
+        review_dict["hotel_id"] = hotel_id_int
+        reviews_df = pd.concat(
+            [reviews_df, pd.DataFrame([review_dict])], ignore_index=True
         )
+        write_csv(batch_file, reviews_df)
+        get_reviews_from_batch.cache_clear()
+
+        return {"status": "success", "message": "Review added"}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid hotel ID format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/hotel/{hotel_id}/reviews")
-async def get_hotel_reviews(hotel_id: str):
-    """Retrieve reviews for a specific hotel."""
+@app.get("/hotels/{hotel_id}")
+async def get_hotel(hotel_id: str):
+    """Get hotel details"""
     try:
-        # Find the appropriate review file for the hotel_id
-        review_file = get_batch_file(hotel_id)
-        if review_file is None:
-            return {"status": "success", "reviews": []}
+        hotels_df = get_hotels_df()
+        hotel_details = hotels_df[hotels_df["hotel_id"].astype(str) == hotel_id]
 
-        # Load the review file
-        reviews_df = pd.read_csv(review_file, encoding="utf-8-sig")
-
-        # Filter reviews for the specific hotel_id
-        hotel_reviews = reviews_df[reviews_df["hotel_id"] == int(hotel_id)]
-
-        # Handle NaN values before returning the data
-        hotel_reviews = hotel_reviews.fillna("").to_dict(orient="records")
+        if hotel_details.empty:
+            raise HTTPException(
+                status_code=404, detail=f"No hotel found with ID {hotel_id}"
+            )
 
         return {
             "status": "success",
-            "num_reviews": len(hotel_reviews),
-            "reviews": hotel_reviews,
+            "hotel_details": hotel_details.replace([np.inf, -np.inf, np.nan], None)
+            .iloc[0]
+            .to_dict(),
         }
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/search/reviews")
-async def search_reviews(query: str):
-    """Search reviews based on query."""
-    try:
-        with open(REVIEW_INVERTED_INDEX, "r") as f:
-            review_index = json.load(f)
-
-        tokens = query.lower().split()
-        matched_review_ids = set()
-
-        # Token-to-review mapping
-        for token in tokens:
-            if token in review_index:
-                matched_review_ids.update(review_index[token])
-
-        # Fetch matching reviews
-        reviews = []
-        for review_id in matched_review_ids:
-            offering_id, pos = review_id.split(":")
-            batch_file = get_batch_file(offering_id)
-
-            if os.path.exists(batch_file):
-                with open(batch_file, "r") as f:
-                    batch = json.load(f)
-                    reviews.append(batch[offering_id][int(pos)])
-
-        return {"status": "success", "results": reviews}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/hotel/{hotel_id}")
-async def get_hotel(hotel_id: str):
-    """
-    Retrieve details for a specific hotel by its hotel_id.
-    """
-    try:
-        # Load the CSV file into a DataFrame
-        hotels_df = pd.read_csv(HOTELS_FILE)
-
-        # Ensure hotel_id is treated as a string for comparison
-        hotels_df["hotel_id"] = hotels_df["hotel_id"].astype(str)
-
-        # Filter the DataFrame for the specific hotel_id
-        hotel_details = hotels_df[hotels_df["hotel_id"] == hotel_id]
-
-        # Check if hotel details are found
-        if hotel_details.empty:
-            raise HTTPException(status_code=404, detail=f"No hotel found with ID {hotel_id}")
-
-        # Convert the result to a dictionary
-        hotel_details_dict = hotel_details.iloc[0].to_dict()
-
-        return {"status": "success", "hotel_details": hotel_details_dict}
-
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail=f"File {HOTELS_FILE} not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/hotels/{hotel_id}/reviews")
+async def get_hotel_reviews(hotel_id: str):
+    """Get hotel reviews"""
+    try:
+        hotel_id_int = int(hotel_id)
+        batch_file = get_review_batch_file(hotel_id_int)
+
+        if not os.path.exists(batch_file):
+            return {"status": "success", "reviews": [], "num_reviews": 0}
+
+        reviews = get_reviews_from_batch(batch_file, hotel_id_int)
+        return {"status": "success", "reviews": reviews, "num_reviews": len(reviews)}
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid hotel ID format")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
