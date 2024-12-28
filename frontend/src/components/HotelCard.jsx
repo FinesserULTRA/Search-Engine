@@ -1,13 +1,13 @@
 import { MapPin, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
-// import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
-function HotelCard({id, name, image, rating, reviews, address}) {
+function HotelCard({ id, name, image, rating, reviews, address }) {
 
-    // const navigate = useNavigate()
+    const navigate = useNavigate()
 
     return (
-        <Link to={`/hotel/${id}`} className="block">
+        <Link to={`/hotel/${id}`} className="block" >
             <div className="rounded-lg border bg-card text-card-foreground shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer">
                 <div className="relative overflow-hidden rounded-t-lg">
                     <img className="object-cover w-full h-48" src={image} alt={name} />
@@ -34,7 +34,7 @@ function HotelCard({id, name, image, rating, reviews, address}) {
                     </div>
                 </div>
             </div>
-        </Link>
+        </Link >
     );
 };
 

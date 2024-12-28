@@ -4,7 +4,7 @@ from collections import defaultdict
 from lexicon_loader import load_lexicon
 from functools import lru_cache
 
-BATCH_SIZE = 50000
+BATCH_SIZE = 20000
 
 
 @lru_cache(maxsize=1)

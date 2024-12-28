@@ -8,8 +8,6 @@ function DataForm() {
     const [activeTab, setActiveTab] = useState('reviews')
     const [isFileUpload, setIsFileUpload] = useState(false)
     const [hotelFormData, setHotelFormData] = useState({
-        hotel_id: '',
-        offering_id: '',
         name: '',
         region_id: '',
         region: '',
@@ -27,18 +25,14 @@ function DataForm() {
     })
 
     const [reviewFormData, setReviewFormData] = useState({
-        rev_id: '',
-        hotel_id: '',
-        offering_id: '',
-        id: '',
         title: '',
         text: '',
+        hotel_id: '',
+        service: '',
+        cleanliness: '',
         overall: '',
-        date_stayed: '',
         value: '',
         location: '',
-        cleanliness: '',
-        service: '',
         sleep_quality: '',
         rooms: ''
     })
@@ -55,11 +49,56 @@ function DataForm() {
 
     const handleSubmit = (e) => {
         e.preventDefault()
-        if (isFileUpload) {
-            console.log('File uploaded')
+        if (activeTab === 'reviews') {
+
+            if (isFileUpload) {
+                console.log('File uploaded')
+            } else {
+
+                fetch(`http://127.0.0.1:8000/reviews`, {
+                    method: 'POST', // Specify the method
+                    headers: {
+                        'Content-Type': 'application/json', // Specify content type as JSON
+                    },
+                    body: JSON.stringify(reviewFormData),
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        console.log('Review created:', data);
+                    })
+                    .catch((err) => {
+                        console.error('Error creating review:', err);
+                    });
+
+            }
+
         } else {
-            console.log('Form submitted:', hotelFormData)
+            if (isFileUpload) {
+                console.log('File uploaded')
+            } else {
+
+                fetch(`http://127.0.0.1:8000/hotels`, {
+                    method: 'POST', // Specify the method
+                    headers: {
+                        'Content-Type': 'application/json', // Specify content type as JSON
+                    },
+                    body: JSON.stringify(hotelFormData),
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        console.log('Hotel created:', data);
+                    })
+                    .catch((err) => {
+                        console.error('Error creating hotel:', err);
+                    });
+            }
         }
+
+        // if (isFileUpload) {
+        //     console.log('File uploaded')
+        // } else {
+        //     console.log('Form submitted:', hotelFormData)
+        // }
     }
 
     return (
@@ -122,28 +161,6 @@ function DataForm() {
                             {/* First Row */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <div className="text-sm">Hotel ID</div>
-                                    <Input
-                                        name="hotel_id"
-                                        value={hotelFormData.hotel_id}
-                                        onChange={handleHotelInputChange}
-                                        className="bg-white border-0"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="text-sm">Offering ID</div>
-                                    <Input
-                                        name="offering_id"
-                                        value={hotelFormData.offering_id}
-                                        onChange={handleHotelInputChange}
-                                        className="bg-white border-0"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Second Row */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
                                     <div className="text-sm">Name</div>
                                     <Input
                                         name="name"
@@ -153,7 +170,7 @@ function DataForm() {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <div className="text-sm">ID</div>
+                                    <div className="text-sm">Region ID</div>
                                     <Input
                                         name="region_id"
                                         value={hotelFormData.region_id}
@@ -318,7 +335,7 @@ function DataForm() {
                         type="submit"
                         className="w-full bg-zinc-800 text-white py-2 rounded hover:bg-zinc-700 transition-colors"
                     >
-                        {isFileUpload ? 'Upload File' : 'Add Review'}
+                        {isFileUpload ? 'Upload File' : 'Add Hotel'}
                     </button>
                 </form>
             ) : (
@@ -348,15 +365,6 @@ function DataForm() {
                             {/* First Row */}
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <div className="text-sm">Review ID</div>
-                                    <Input
-                                        name="rev_id"
-                                        value={reviewFormData.rev_id}
-                                        onChange={handleReviewInputChange}
-                                        className="bg-white border-0"
-                                    />
-                                </div>
-                                <div className="space-y-1">
                                     <div className="text-sm">Hotel ID</div>
                                     <Input
                                         name="hotel_id"
@@ -365,32 +373,6 @@ function DataForm() {
                                         className="bg-white border-0"
                                     />
                                 </div>
-                            </div>
-
-                            {/* Second Row */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <div className="text-sm">Offering ID</div>
-                                    <Input
-                                        name="offering_id"
-                                        value={reviewFormData.offering_id}
-                                        onChange={handleReviewInputChange}
-                                        className="bg-white border-0"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="text-sm">ID</div>
-                                    <Input
-                                        name="id"
-                                        value={reviewFormData.id}
-                                        onChange={handleReviewInputChange}
-                                        className="bg-white border-0"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Third Row */}
-                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <div className="text-sm">Title</div>
                                     <Input
@@ -400,18 +382,9 @@ function DataForm() {
                                         className="bg-white border-0"
                                     />
                                 </div>
-                                <div className="space-y-1">
-                                    <div className="text-sm">Date Stayed</div>
-                                    <Input
-                                        name="date_stayed"
-                                        value={reviewFormData.date_stayed}
-                                        onChange={handleReviewInputChange}
-                                        className="bg-white border-0"
-                                    />
-                                </div>
                             </div>
 
-                            {/* Forth Row */}
+                            {/* Second Row */}
                             <div className="grid grid-cols-1 gap-4">
                                 <div className="space-y-1">
                                     <div className="text-sm">Text</div>

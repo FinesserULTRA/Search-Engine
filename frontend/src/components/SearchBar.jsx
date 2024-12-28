@@ -21,7 +21,7 @@ const globalStyles = globalCss({
 
 const locations = [
     { value: "all", label: "Anywhere" },
-    { value: "new-york", label: "New York" },
+    { value: "new york", label: "New York" },
     { value: "california", label: "California" },
     { value: "texas", label: "Texas" },
     { value: "florida", label: "Florida" },
@@ -30,8 +30,8 @@ const locations = [
     { value: "ohio", label: "Ohio" },
     { value: "georgia", label: "Georgia" },
     { value: "michigan", label: "Michigan" },
-    { value: "north-carolina", label: "North Carolina" },
-    { value: "new-jersey", label: "New Jersey" }
+    { value: "north carolina", label: "North Carolina" },
+    { value: "new jersey", label: "New Jersey" }
 ];
 
 const SearchBar = () => {
@@ -45,11 +45,15 @@ const SearchBar = () => {
     const locationInputRef = useRef(null);
 
     const handleSearch = () => {
-        fetch(`http://127.0.0.1:8000/search?query=${searchTerm}&type=hotels`, {
+
+        const query = searchTerm + " " + selectedLocation;
+
+        fetch(`http://127.0.0.1:8000/search?query=${query}&type=hotels`, {
             method: "GET",
         })
             .then((res) => res.json())
             .then((data) => {
+                console.log(data);
                 navigate("/search", { state: { data } });
             })
             .catch((err) => {

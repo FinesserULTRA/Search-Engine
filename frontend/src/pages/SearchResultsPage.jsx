@@ -4,13 +4,13 @@ import { useLocation } from "react-router-dom";
 
 function SearchResultsPage() {
   const location = useLocation();
-  const data = location.state.data;
+  const { data } = location.state;
   const hotels = data.results;
   const totalResults = data.total_matches;
 
   return (
-    <div className="min-h-screen w-full bg-primaryclr p-8">
-      <div className="max-w-full mx-auto min-w-[320px] space-y-8">
+    <div className="min-h-screen w-screen bg-primaryclr p-8">
+      <div className="w-full mx-auto space-y-8">
         <div className="flex justify-center w-full px-4">
           <div className="w-full max-w-4xl">
             <SearchBar />
@@ -30,7 +30,7 @@ function SearchResultsPage() {
               image={"https://dynamic-media-cdn.tripadvisor.com/media/photo-o/09/35/09/e6/casablanca-hotel-times.jpg?w=2000&h=-1&s=1"}
               rating={hotel.overall}
               reviews={hotel.review_count}
-              address={"525 Lexington Avenue"}
+              address={hotel["street-address"]}
             />
           ))}
         </div>

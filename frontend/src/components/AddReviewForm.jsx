@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { useNavigate } from 'react-router-dom';
 
 const RatingInput = ({ name, value, onChange }) => (
     <div className="flex flex-col items-start">
@@ -26,20 +27,22 @@ const RatingInput = ({ name, value, onChange }) => (
     </div>
 );
 
-function AddReviewForm() {
+function AddReviewForm({ hotel_id }) {
+
+    const id = hotel_id;
+    const navigate = useNavigate();
+
     const [formData, setFormData] = useState({
         title: '',
         text: '',
-        author: '',
-        ratings: {
-            overall: 0,
-            value: 0,
-            location: 0,
-            cleanliness: 0,
-            service: 0,
-            sleep_quality: 0,
-            rooms: 0,
-        },
+        hotel_id: id,
+        service: 0,
+        cleanliness: 0,
+        overall: 0,
+        value: 0,
+        location: 0,
+        sleep_quality: 0,
+        rooms: 0,
     });
 
     const handleInputChange = (e) => {
@@ -48,31 +51,41 @@ function AddReviewForm() {
     };
 
     const handleRatingChange = (name, value) => {
-        setFormData((prev) => ({
-            ...prev,
-            ratings: { ...prev.ratings, [name]: value },
-        }));
+        setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        // Here you would typically send the formData to your backend
-        console.log('Submitted review:', formData);
+
+        fetch(`http://127.0.0.1:8000/reviews`, {
+            method: 'POST', // Specify the method
+            headers: {
+                'Content-Type': 'application/json', // Specify content type as JSON
+            },
+            body: JSON.stringify(formData),
+        })
+            .then((res) => res.json())
+            .then((data) => {
+                console.log('Review created:', data);
+            })
+            .catch((err) => {
+                console.error('Error creating review:', err);
+            });
+
         // Reset form after submission
         setFormData({
             title: '',
             text: '',
-            author: '',
-            ratings: {
-                overall: 0,
-                value: 0,
-                location: 0,
-                cleanliness: 0,
-                service: 0,
-                sleep_quality: 0,
-                rooms: 0,
-            },
+            hotel_id: 0,
+            service: 0,
+            cleanliness: 0,
+            overall: 0,
+            value: 0,
+            location: 0,
+            sleep_quality: 0,
+            rooms: 0,
         });
+        window.location.reload();
     };
 
     return (
@@ -88,7 +101,7 @@ function AddReviewForm() {
                 />
             </div>
             <div>
-                <Label htmlFor="text">Review</Label>
+                <Label htmlFor="text">Text</Label>
                 <Textarea
                     id="text"
                     name="text"
@@ -97,50 +110,41 @@ function AddReviewForm() {
                     required
                 />
             </div>
-            <div>
-                <Label htmlFor="author">Your Name</Label>
-                <Input
-                    id="author"
-                    name="author"
-                    value={formData.author}
-                    onChange={handleInputChange}
-                    required
-                />
-            </div>
             <div className="grid grid-cols-2 gap-4">
                 <RatingInput
-                    name="Overall"
-                    value={formData.ratings.overall}
+                    name="overall"
+                    value={formData.overall}
                     onChange={(value) => handleRatingChange('overall', value)}
                 />
                 <RatingInput
-                    name="Value"
-                    value={formData.ratings.value}
+                    name="value"
+                    value={formData.value}
                     onChange={(value) => handleRatingChange('value', value)}
                 />
                 <RatingInput
-                    name="Location"
-                    value={formData.ratings.location}
+                    name="location"
+                    value={formData.location}
                     onChange={(value) => handleRatingChange('location', value)}
+
                 />
                 <RatingInput
-                    name="Cleanliness"
-                    value={formData.ratings.cleanliness}
+                    name="cleanliness"
+                    value={formData.cleanliness}
                     onChange={(value) => handleRatingChange('cleanliness', value)}
                 />
                 <RatingInput
-                    name="Service"
-                    value={formData.ratings.service}
+                    name="service"
+                    value={formData.service}
                     onChange={(value) => handleRatingChange('service', value)}
                 />
                 <RatingInput
-                    name="Sleep Quality"
-                    value={formData.ratings.sleep_quality}
+                    name="sleep_quality"
+                    value={formData.sleep_quality}
                     onChange={(value) => handleRatingChange('sleep_quality', value)}
                 />
                 <RatingInput
-                    name="Rooms"
-                    value={formData.ratings.rooms}
+                    name="rooms"
+                    value={formData.rooms}
                     onChange={(value) => handleRatingChange('rooms', value)}
                 />
             </div>

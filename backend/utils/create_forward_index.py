@@ -3,7 +3,7 @@ import json
 import os
 from tokenizer import Tokenizer
 
-BATCH_SIZE = 50000
+BATCH_SIZE = 20000
 
 
 def create_forward_index(
@@ -79,17 +79,17 @@ def create_forward_index(
 
 
 if __name__ == "__main__":
-    # create_forward_index(
-    #     "../data/hotels_cleaned.csv",
-    #     "../index data/lexicon/lexicon.json",
-    #     "../index data/forward_index/hotels",
-    #     "hotel_id",
-    #     ["name", "locality", "street-address", "region"],
-    # )
     create_forward_index(
-        "../data/reviews_cleaned.csv",
+        "../data/hotels_cleaned.csv",
         "../index data/lexicon/lexicon.json",
-        "../index data/forward_index/reviews",
-        "rev_id",
-        ["title", "text"],
+        "../index data/forward_index/hotels",
+        "hotel_id",
+        ["name", "locality", "street-address", "region"],
     )
+    # create_forward_index(
+    #     "../data/reviews_cleaned.csv",
+    #     "../index data/lexicon/lexicon.json",
+    #     "../index data/forward_index/reviews",
+    #     "rev_id",
+    #     ["title", "text"],
+    # )

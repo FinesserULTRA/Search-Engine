@@ -15,23 +15,22 @@ const RatingCategory = ({ name, value }) => (
     </div>
 );
 
-function Review({ author, date, title, text, ratings }) {
+function Review({ date_stayed, title, text, overall, value, location, cleanliness, service, sleep_quality, rooms }) {
     return (
         <div className="bg-white shadow rounded-lg p-4">
             <h3 className="font-semibold text-lg mb-2">{title}</h3>
             <div className="flex justify-between items-center mb-2">
-                <span className="text-sm text-gray-600">{author}</span>
-                <span className="text-sm text-gray-600">{date}</span>
+                <span className="text-sm text-gray-600">{date_stayed}</span>
             </div>
             <p className="text-gray-700 mb-4">{text}</p>
             <div className="grid grid-cols-2 gap-2">
-                <RatingCategory name="Overall" value={ratings.overall} />
-                <RatingCategory name="Value" value={ratings.value} />
-                <RatingCategory name="Location" value={ratings.location} />
-                <RatingCategory name="Cleanliness" value={ratings.cleanliness} />
-                <RatingCategory name="Service" value={ratings.service} />
-                <RatingCategory name="Sleep Quality" value={ratings.sleep_quality} />
-                <RatingCategory name="Rooms" value={ratings.rooms} />
+                <RatingCategory name="Overall" value={overall || 0} />
+                <RatingCategory name="Value" value={value || 0} />
+                <RatingCategory name="Location" value={location || 0} />
+                <RatingCategory name="Cleanliness" value={cleanliness || 0} />
+                <RatingCategory name="Service" value={service || 0} />
+                <RatingCategory name="Sleep Quality" value={sleep_quality || 0} />
+                <RatingCategory name="Rooms" value={rooms || 0} />
             </div>
         </div>
     );

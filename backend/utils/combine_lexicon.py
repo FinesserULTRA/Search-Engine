@@ -18,7 +18,7 @@ for lexicon_file in lexicon_files:
                 combined_lexicon[word] = len(combined_lexicon)
 
 # Save the combined lexicon to a new JSON filea
-output_filename = "../index data/combined_lexicon.json"
+output_filename = "../index data/lexicon.json"
 with open(output_filename, "w", encoding="utf-8-sig") as json_file:
     json.dump(combined_lexicon, json_file, indent=4)
 
