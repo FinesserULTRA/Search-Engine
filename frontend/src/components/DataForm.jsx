@@ -36,6 +36,11 @@ function DataForm() {
         sleep_quality: '',
         rooms: ''
     })
+    const [selectedFile, setSelectedFile] = useState(null);
+
+    const handleFileChange = (event) => {
+        setSelectedFile(event.target.files[0]);
+    };
 
     const handleHotelInputChange = (e) => {
         const { name, value } = e.target
@@ -50,9 +55,24 @@ function DataForm() {
     const handleSubmit = (e) => {
         e.preventDefault()
         if (activeTab === 'reviews') {
-            if (isFileUpload) {
-                console.log('File uploaded')
-            } else {
+            if (isFileUpload && selectedFile !== null) {
+                const formData = new FormData();
+                formData.append("file", selectedFile);
+
+                fetch(`http://127.0.0.1:8000/hotels/upload`, {
+                    method: "POST",
+                    body: formData,
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        console.log('File uploaded:', data);
+                    })
+                    .catch((err) => {
+                        console.error('Error uploading file:', err);
+                    });
+
+
+            } else if (!isFileUpload) {
                 // Convert numeric strings to numbers for review submission
                 const formattedReviewData = {
                     ...reviewFormData,
@@ -73,18 +93,32 @@ function DataForm() {
                     },
                     body: JSON.stringify(formattedReviewData),
                 })
-                .then((res) => res.json())
-                .then((data) => {
-                    console.log('Review created:', data);
-                })
-                .catch((err) => {
-                    console.error('Error creating review:', err);
-                });
+                    .then((res) => res.json())
+                    .then((data) => {
+                        console.log('Review created:', data);
+                    })
+                    .catch((err) => {
+                        console.error('Error creating review:', err);
+                    });
             }
         } else {
-            if (isFileUpload) {
-                console.log('File uploaded')
-            } else {
+            if (isFileUpload && selectedFile !== null) {
+                const formData = new FormData();
+                formData.append("file", selectedFile);
+
+                fetch(`http://127.0.0.1:8000/hotels/upload`, {
+                    method: "POST",
+                    body: formData,
+                })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        console.log('File uploaded:', data);
+                    })
+                    .catch((err) => {
+                        console.error('Error uploading file:', err);
+                    });
+
+            } else if (!isFileUpload) {
                 // Convert numeric strings to numbers for hotel submission
                 const formattedHotelData = {
                     ...hotelFormData,
@@ -106,13 +140,13 @@ function DataForm() {
                     },
                     body: JSON.stringify(formattedHotelData),
                 })
-                .then((res) => res.json())
-                .then((data) => {
-                    console.log('Hotel created:', data);
-                })
-                .catch((err) => {
-                    console.error('Error creating hotel:', err);
-                });
+                    .then((res) => res.json())
+                    .then((data) => {
+                        console.log('Hotel created:', data);
+                    })
+                    .catch((err) => {
+                        console.error('Error creating hotel:', err);
+                    });
             }
         }
     }
@@ -168,6 +202,7 @@ function DataForm() {
                             <Input
                                 type="file"
                                 accept=".csv,.json"
+                                onChange={handleFileChange}
                                 className="bg-white border-0 cursor-pointer"
                             />
                         </div>
@@ -372,6 +407,7 @@ function DataForm() {
                             <Input
                                 type="file"
                                 accept=".csv,.json"
+                                onChange={handleFileChange}
                                 className="bg-white border-0 cursor-pointer"
                             />
                         </div>
