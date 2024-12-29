@@ -11,7 +11,7 @@ function DataForm() {
         name: '',
         region_id: '',
         region: '',
-        street_address: '',
+        'street-address': '',
         locality: '',
         hotel_class: '',
         service: '',
@@ -50,55 +50,71 @@ function DataForm() {
     const handleSubmit = (e) => {
         e.preventDefault()
         if (activeTab === 'reviews') {
-
             if (isFileUpload) {
                 console.log('File uploaded')
             } else {
+                // Convert numeric strings to numbers for review submission
+                const formattedReviewData = {
+                    ...reviewFormData,
+                    hotel_id: parseInt(reviewFormData.hotel_id),
+                    service: reviewFormData.service ? parseFloat(reviewFormData.service) : null,
+                    cleanliness: reviewFormData.cleanliness ? parseFloat(reviewFormData.cleanliness) : null,
+                    overall: reviewFormData.overall ? parseFloat(reviewFormData.overall) : null,
+                    value: reviewFormData.value ? parseFloat(reviewFormData.value) : null,
+                    location: reviewFormData.location ? parseFloat(reviewFormData.location) : null,
+                    sleep_quality: reviewFormData.sleep_quality ? parseFloat(reviewFormData.sleep_quality) : null,
+                    rooms: reviewFormData.rooms ? parseFloat(reviewFormData.rooms) : null
+                }
 
                 fetch(`http://127.0.0.1:8000/reviews`, {
-                    method: 'POST', // Specify the method
+                    method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json', // Specify content type as JSON
+                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(reviewFormData),
+                    body: JSON.stringify(formattedReviewData),
                 })
-                    .then((res) => res.json())
-                    .then((data) => {
-                        console.log('Review created:', data);
-                    })
-                    .catch((err) => {
-                        console.error('Error creating review:', err);
-                    });
-
+                .then((res) => res.json())
+                .then((data) => {
+                    console.log('Review created:', data);
+                })
+                .catch((err) => {
+                    console.error('Error creating review:', err);
+                });
             }
-
         } else {
             if (isFileUpload) {
                 console.log('File uploaded')
             } else {
+                // Convert numeric strings to numbers for hotel submission
+                const formattedHotelData = {
+                    ...hotelFormData,
+                    hotel_class: hotelFormData.hotel_class ? parseFloat(hotelFormData.hotel_class) : null,
+                    service: hotelFormData.service ? parseFloat(hotelFormData.service) : null,
+                    cleanliness: hotelFormData.cleanliness ? parseFloat(hotelFormData.cleanliness) : null,
+                    overall: hotelFormData.overall ? parseFloat(hotelFormData.overall) : null,
+                    value: hotelFormData.value ? parseFloat(hotelFormData.value) : null,
+                    location: hotelFormData.location ? parseFloat(hotelFormData.location) : null,
+                    sleep_quality: hotelFormData.sleep_quality ? parseFloat(hotelFormData.sleep_quality) : null,
+                    rooms: hotelFormData.rooms ? parseFloat(hotelFormData.rooms) : null,
+                    average_score: hotelFormData.average_score ? parseFloat(hotelFormData.average_score) : null
+                }
 
                 fetch(`http://127.0.0.1:8000/hotels`, {
-                    method: 'POST', // Specify the method
+                    method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json', // Specify content type as JSON
+                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(hotelFormData),
+                    body: JSON.stringify(formattedHotelData),
                 })
-                    .then((res) => res.json())
-                    .then((data) => {
-                        console.log('Hotel created:', data);
-                    })
-                    .catch((err) => {
-                        console.error('Error creating hotel:', err);
-                    });
+                .then((res) => res.json())
+                .then((data) => {
+                    console.log('Hotel created:', data);
+                })
+                .catch((err) => {
+                    console.error('Error creating hotel:', err);
+                });
             }
         }
-
-        // if (isFileUpload) {
-        //     console.log('File uploaded')
-        // } else {
-        //     console.log('Form submitted:', hotelFormData)
-        // }
     }
 
     return (
@@ -194,8 +210,8 @@ function DataForm() {
                                 <div className="space-y-1">
                                     <div className="text-sm">Street Address</div>
                                     <Input
-                                        name="street_address"
-                                        value={hotelFormData.street_address}
+                                        name="street-address"
+                                        value={hotelFormData['street-address']}
                                         onChange={handleHotelInputChange}
                                         className="bg-white border-0"
                                     />
