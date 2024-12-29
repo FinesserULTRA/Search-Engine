@@ -1,106 +1,207 @@
 import json
 import os
 from collections import defaultdict
+import multiprocessing as mp
+import traceback
 
 BATCH_SIZE = 20000
 
-def load_inverted_index_file(file_path):
-    """Safely load an existing inverted index JSON or return an empty structure."""
-    if not os.path.exists(file_path):
+def load_forward_index_file(file_path):
+    """Safely load a forward index JSON or return an empty dict."""
+    try:
+        if not os.path.exists(file_path):
+            return {}
+        with open(file_path, "r", encoding="utf-8-sig") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Error loading {file_path}: {str(e)}")
+        print(f"Error location: line {e.lineno}, column {e.colno}")
         return {}
-    with open(file_path, "r", encoding="utf-8-sig") as f:
-        return json.load(f)
+    except Exception as e:
+        print(f"Unexpected error loading {file_path}: {str(e)}")
+        return {}
 
-def save_inverted_index_file(inverted_data, file_path):
-    """Write the updated inverted data to disk safely."""
-    with open(file_path, "w", encoding="utf-8-sig") as f:
-        json.dump(inverted_data, f, indent=4)
+def safe_json_load(file_path):
+    """Safely load any JSON file with proper error handling."""
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8-sig") as f:
+                content = f.read()
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError as e:
+                    print(f"Invalid JSON in {file_path}")
+                    print(f"Error: {str(e)}")
+                    print(f"Error location: line {e.lineno}, column {e.colno}")
+                    # Try to recover by removing problematic characters
+                    content = content.replace("\x00", "")
+                    try:
+                        return json.loads(content)
+                    except:
+                        return {}
+        return {}
+    except Exception as e:
+        print(f"Error reading {file_path}: {str(e)}")
+        return {}
 
-def update_inverted_index_from_forward(forward_file, inverted_dir):
-    """Read a forward_index_X-Y.json, then update the relevant inverted_index files."""
-    if not os.path.exists(forward_file):
-        print(f"Forward file not found: {forward_file}")
-        return
+def map_forward_to_partial_inverted(forward_index_file):
+    """
+    'Map' step: 
+    Read one forward_index_*.json, build and return a partial inverted index dict in memory.
+    
+    partial_inverted = {
+      word_id(str): {
+        "docs": [
+          {"id": doc_id, "freq": freq, "positions": [...], "fields": [...]},
+          ...
+        ]
+      },
+      ...
+    }
+    """
+    print(f"[Map] Processing {forward_index_file} in worker {os.getpid()}")
+    partial_inverted = {}
 
-    with open(forward_file, "r", encoding="utf-8-sig") as f:
-        forward_data = json.load(f)
+    forward_data = load_forward_index_file(forward_index_file)
+    if not forward_data:
+        return partial_inverted  # empty
 
     for doc_id, doc_info in forward_data.items():
-        word_positions = doc_info["word_positions"]
-        # doc_info["word_counts"]
-        field_matches = doc_info["field_matches"]
+        word_positions = doc_info["word_positions"]   # e.g. {"1234": [0,5], ...}
+        field_matches = doc_info["field_matches"]     # e.g. {"name": ["1234","1567"], ...}
 
         for word_id_str, positions in word_positions.items():
             word_id = int(word_id_str)
-            batch_start = (word_id // BATCH_SIZE)*BATCH_SIZE
-            batch_end = batch_start + BATCH_SIZE -1
-            inv_file = os.path.join(
-                inverted_dir, f"inverted_index_{batch_start}-{batch_end}.json"
-            )
-
-            # load or init
-            inv_data = load_inverted_index_file(inv_file)
-            if str(word_id) not in inv_data:
-                inv_data[str(word_id)] = {"docs":[]}
-
-            # find if doc_id is already present
-            postings = inv_data[str(word_id)]["docs"]
             freq = len(positions)
-            fields_used = []
+
             # find which fields had this word_id
+            fields_used = []
             for field, wlist in field_matches.items():
-                if word_id in wlist:
+                if word_id_str in wlist:
                     fields_used.append(field)
 
+            # Insert into partial_inverted
+            if word_id_str not in partial_inverted:
+                partial_inverted[word_id_str] = {"docs": []}
+            partial_inverted[word_id_str]["docs"].append({
+                "id": doc_id,
+                "freq": freq,
+                "positions": positions,
+                "fields": fields_used
+            })
+
+    return partial_inverted
+
+def reduce_partials_and_write(all_partials, output_dir):
+    """
+    'Reduce' step:
+    Merge all partial_inverted dicts from the workers, 
+    then write final inverted_index_{start}-{end}.json files.
+    """
+
+    # 1) Merge them in memory
+    # We'll do a single big dict: merged_inverted[word_id_str]["docs"] => extended list
+    print("[Reduce] Merging partial dicts in main process...")
+    merged_inverted = {}
+
+    for partial_dict in all_partials:
+        for word_id_str, data in partial_dict.items():
+            if word_id_str not in merged_inverted:
+                merged_inverted[word_id_str] = {"docs": []}
+            merged_inverted[word_id_str]["docs"].extend(data["docs"])
+
+    # 2) Now we write them out by word_id range
+    #    e.g. word_id => find batch_start, batch_end => open that file, merge, etc.
+    #    But simpler is to build an in-memory dict-of-dicts, then dump them.
+    #    We'll do a smaller step approach: for each word_id_str, figure out the file name,
+    #    load existing on disk if any, unify, then write.
+
+    print("[Reduce] Writing final inverted index JSON files...")
+    os.makedirs(output_dir, exist_ok=True)
+
+    for word_id_str, data in merged_inverted.items():
+        word_id = int(word_id_str)
+        batch_start = (word_id // BATCH_SIZE)*BATCH_SIZE
+        batch_end = batch_start + BATCH_SIZE -1
+        inv_file = os.path.join(output_dir, f"inverted_index_{batch_start}-{batch_end}.json")
+
+        # Use safe_json_load instead of direct json.load
+        existing_data = safe_json_load(inv_file)
+
+        if word_id_str not in existing_data:
+            existing_data[word_id_str] = {"docs":[]}
+
+        postings = existing_data[word_id_str]["docs"]
+
+        # Now we unify the docs from 'data["docs"]' into 'postings',
+        # summing freq if doc_id matches, etc.
+        for new_doc in data["docs"]:
             found = False
-            for posting in postings:
-                if posting["id"] == doc_id:
-                    # update freq, positions, fields, etc.
-                    posting["freq"] += freq
-                    posting["positions"].extend(positions)
-                    for ff in fields_used:
-                        if ff not in posting["fields"]:
-                            posting["fields"].append(ff)
+            for p in postings:
+                if p["id"] == new_doc["id"]:
+                    p["freq"] += new_doc["freq"]
+                    p["positions"].extend(new_doc["positions"])
+                    # unify fields
+                    for ff in new_doc["fields"]:
+                        if ff not in p["fields"]:
+                            p["fields"].append(ff)
                     found = True
                     break
-
             if not found:
-                postings.append({
-                    "id": doc_id,
-                    "freq": freq,
-                    "positions": positions,
-                    "fields": fields_used
-                })
+                postings.append(new_doc)
 
-            # save updated
-            save_inverted_index_file(inv_data, inv_file)
+        # finally, write back
+        try:
+            with open(inv_file, "w", encoding="utf-8-sig") as f:
+                json.dump(existing_data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            print(f"Error writing {inv_file}: {str(e)}")
+            print(traceback.format_exc())
 
-def create_or_update_inverted_index(forward_index_dir, inverted_index_dir):
-    """For each forward_index_*.json, update the relevant inverted_index_*.json files incrementally."""
-    os.makedirs(inverted_index_dir, exist_ok=True)
+    print("[Reduce] Done writing all inverted index files!")
 
+
+def create_or_update_inverted_index_parallel(forward_index_dir, inverted_index_dir, num_workers=None):
+    """
+    1) Gather forward_index_*.json files
+    2) Use multiprocessing Pool to map each file -> partial_inverted dict
+    3) Merge them all in main process
+    4) Write them out
+    """
     forward_files = [
-        f for f in os.listdir(forward_index_dir)
+        os.path.join(forward_index_dir, f) 
+        for f in os.listdir(forward_index_dir)
         if f.startswith("forward_index_") and f.endswith(".json")
     ]
-    forward_files.sort()  # optional, if you want sorted processing
+    forward_files.sort()
 
-    for ffile in forward_files:
-        full_path = os.path.join(forward_index_dir, ffile)
-        print(f"Updating from {full_path}")
-        update_inverted_index_from_forward(full_path, inverted_index_dir)
+    if not forward_files:
+        print("No forward_index_*.json files found!")
+        return
 
-    print("Inverted index creation/update complete!")
+    if num_workers is None:
+        num_workers = min(mp.cpu_count(), len(forward_files))
+
+    print(f"Using {num_workers} processes to map {len(forward_files)} forward_index files...")
+
+    # -- MAP phase --
+    with mp.Pool(processes=num_workers) as pool:
+        partial_dicts = pool.map(map_forward_to_partial_inverted, forward_files)
+
+    # partial_dicts is a list of partial_inverted dicts from each file
+
+    # -- REDUCE phase --
+    reduce_partials_and_write(partial_dicts, inverted_index_dir)
+
+    print("Inverted index creation/update complete (parallel map-reduce)!")
 
 
 if __name__ == "__main__":
-    # Example usage
-    lexicon_path = "../index data/lexicon/lexicon.json"
-    create_or_update_inverted_index(
+    create_or_update_inverted_index_parallel(
         "../index data/forward_index/hotels", 
-        "../index data/inverted_index/hotels"
+        "../index data/inverted_index/hotels",
     )
-    create_or_update_inverted_index(
+    create_or_update_inverted_index_parallel(
         "../index data/forward_index/reviews", 
-        "../index data/inverted_index/reviews"
+        "../index data/inverted_index/reviews",
     )

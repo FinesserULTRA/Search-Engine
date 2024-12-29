@@ -24,7 +24,7 @@ def load_json(file_path):
 
 
 if __name__ == "__main__":
-    file_path = "/home/ultra/dev/DSAProj/Search-Engine/backend/index data/lexicon/lexicon.json"
+    file_path = "C:\\Users\\PC\\VSCODE\\Search-Engine\\backend\\index data\\lexicon\\lexicon.json"
 
     # First call
     result, duration = measure_time(load_json, file_path)
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     # print(f"Third call - Time to open and load JSON: {duration} seconds")
     # # print(result)
     tag = "good"
-    val = 679594
+    val = 347107
     print(f"{tag}: {search_tag(result, tag)}")
     print(f"{val}: {search_value(result, val)}")
     # print(load_json(file_path))

@@ -45,8 +45,7 @@ const SearchBar = () => {
     const locationInputRef = useRef(null);
 
     const handleSearch = () => {
-
-        const query = searchTerm + " " + selectedLocation;
+        const query = selectedLocation === 'all' || !selectedLocation ? searchTerm : `${searchTerm} ${selectedLocation}`;
 
         fetch(`http://127.0.0.1:8000/search?query=${query}&type=all`, {
             method: "GET",

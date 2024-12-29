@@ -47,7 +47,12 @@ class Config:
             "locality": 2.5,
             "title": 3.0,
             "text": 1.5,
-        }
+        },
+        # Additional scoring knobs
+        "base_freq_weight": 0.3,     # base weight for freq
+        "multi_token_bonus": 0.2,    # small bonus per distinct token matched
+        "field_weight_bonus": 1.0,   # how much to multiply field weights
+        "length_norm_factor": 0.05,  # small factor to reduce huge freq blowups
     }
 
     @staticmethod
@@ -158,6 +163,7 @@ class SearchEngine:
         self.hotels_df = pd.DataFrame()
         self.reviews_df = pd.DataFrame()
         self.document_cache = Cache()
+        self.config = Config
 
         self.current_rev_id = 0
         self.rev_id_lock = threading.Lock()
@@ -252,17 +258,17 @@ class SearchEngine:
 
     async def search(self, query: str, doc_type: str)->Dict:
         """
-        doc_type: "all" => search both hotels+reviews, but return only hotels
-                   "reviews" => search both hotels+reviews, but return only reviews
+        doc_type = "all" => unify matched hotels from (hotels+reviews)
+                         => union approach for partial matches
+        doc_type = "reviews" => unify matched reviews, returning only reviews
         """
-        from fastapi.concurrency import run_in_threadpool
         logger.info(f"search(query='{query}', doc_type='{doc_type}') called.")
+        from fastapi.concurrency import run_in_threadpool
 
         # 1) tokenize
         original_words = [w for w in query.lower().split() if w]
         spacy_tokens = await run_in_threadpool(self.tokenizer.tokenize_with_spacy, query.lower())
         tokens = list(set(original_words + spacy_tokens))
-
         if not tokens:
             return {"results": [], "count": 0, "total_matches": 0}
 
@@ -270,43 +276,83 @@ class SearchEngine:
         if not word_ids:
             return {"results": [], "count": 0, "total_matches": 0}
 
-        # 2) get matched docs from both indexes
-        matched_hotels = await self._search_in_index_multiword(word_ids, "hotels")
-        matched_reviews = await self._search_in_index_multiword(word_ids, "reviews")
+        # 2) multiword union in hotels + reviews
+        matched_hotels = await self._search_in_index_multiword_union(word_ids, "hotels")
+        matched_reviews = await self._search_in_index_multiword_union(word_ids, "reviews")
 
-        # 3) doc_type logic
         if doc_type == "reviews":
-            # only return reviews
+            # score + return only reviews
             final_list = self._score_and_fetch_reviews(matched_reviews, tokens)
+            total = len(final_list)
+            final_list = final_list[:Config.MAX_RESULTS]
+            return {
+                "results": final_list,
+                "count": len(final_list),
+                "total_matches": total,
+            }
         else:
-            # doc_type='all' or anything else => only return hotels
-            final_list = self._score_hotels(matched_hotels, tokens)
+            # doc_type=all => unify hotels
+            unified_hotels = {}
 
-        total = len(final_list)
-        final_list = final_list[: Config.MAX_RESULTS]
-        return {
-            "results": final_list,
-            "count": len(final_list),
-            "total_matches": total
-        }
+            for doc_id, info in matched_hotels.items():
+                try:
+                    h_id = int(doc_id)
+                except:
+                    continue
+                if h_id not in unified_hotels:
+                    unified_hotels[h_id] = {
+                        "freq": info["freq"],
+                        "fields": info["fields"][:],
+                        "positions": info["positions"][:],
+                    }
+                else:
+                    unified_hotels[h_id]["freq"] += info["freq"]
+                    unified_hotels[h_id]["fields"].extend(info["fields"])
+                    unified_hotels[h_id]["positions"].extend(info["positions"])
 
-    async def _search_in_index_multiword(self, word_ids: List[int], doc_type: str)->Dict:
+            for rev_id_str, info in matched_reviews.items():
+                try:
+                    rev_id_int = int(rev_id_str)
+                except:
+                    continue
+                if rev_id_int not in self.rev_to_hotel:
+                    continue
+                h_id = self.rev_to_hotel[rev_id_int]
+                if h_id not in unified_hotels:
+                    unified_hotels[h_id] = {
+                        "freq": info["freq"],
+                        "fields": info["fields"][:],
+                        "positions": info["positions"][:],
+                    }
+                else:
+                    unified_hotels[h_id]["freq"] += info["freq"]
+                    unified_hotels[h_id]["fields"].extend(info["fields"])
+                    unified_hotels[h_id]["positions"].extend(info["positions"])
+
+            final_list = self._score_hotels(unified_hotels, tokens)
+            total = len(final_list)
+            final_list = final_list[:Config.MAX_RESULTS]
+            return {
+                "results": final_list,
+                "count": len(final_list),
+                "total_matches": total,
+            }
+
+    async def _search_in_index_multiword_union(self, word_ids: List[int], doc_type: str)->Dict:
         """
-        multiword intersection approach in doc_type=hotels or doc_type=reviews index
-        returns {doc_id: {freq, fields, positions, ...}}
+        'OR' approach => union of matched docs. Summation if doc is matched multiple tokens.
+        Returns => { doc_id: {freq, fields, positions} }
         """
-        matched_docs = None
+        all_docs = {}
         doc_counter = 0
 
-        for i, w_id in enumerate(word_ids):
-            batch_start = (w_id//Config.INVERTED_BATCH_SIZE)*Config.INVERTED_BATCH_SIZE
+        for w_id in word_ids:
+            batch_start = (w_id // Config.INVERTED_BATCH_SIZE)*Config.INVERTED_BATCH_SIZE
             batch_end = batch_start + Config.INVERTED_BATCH_SIZE -1
             inv_file = f"{Config.INVERTED_INDEX_PATH}/{doc_type}/inverted_index_{batch_start}-{batch_end}.json"
 
             if not os.path.exists(inv_file):
-                # no docs for this token
-                matched_docs = {} if i == 0 else {}
-                break
+                continue
 
             try:
                 async with aiofiles.open(inv_file,"r", encoding="utf-8-sig") as f:
@@ -314,113 +360,160 @@ class SearchEngine:
                 idx_data = json.loads(content)
             except json.JSONDecodeError as e:
                 logger.error(f"Corrupted JSON in {inv_file}: {e}")
-                idx_data = {}
+                continue
             except Exception as e:
                 logger.error(f"Error reading {inv_file}: {e}", exc_info=True)
-                idx_data = {}
+                continue
 
             if str(w_id) not in idx_data:
-                # no docs for this word
-                matched_docs = {} if i == 0 else {}
-                break
+                continue
 
-            # docs for w_id => new_docs
-            new_docs = {}
-            for doc in idx_data[str(w_id)]["docs"]:
-                doc_id = doc["id"]
-                new_docs[doc_id] = {
-                    "freq": doc["freq"],
-                    "fields": doc["fields"],
-                    "positions": doc["positions"],
-                }
+            docs_arr = idx_data[str(w_id)]["docs"]
+            for doc_obj in docs_arr:
+                d_id = doc_obj["id"]
+                freq = doc_obj["freq"]
+                fields = doc_obj["fields"]
+                positions = doc_obj["positions"]
 
-            if i == 0:
-                matched_docs = new_docs
-            else:
-                # intersection
-                intersection = {}
-                for d_id, existing_data in matched_docs.items():
-                    if d_id in new_docs:
-                        # merge freq/fields/positions
-                        combined_freq = existing_data["freq"] + new_docs[d_id]["freq"]
-                        combined_fields = existing_data["fields"] + new_docs[d_id]["fields"]
-                        combined_positions = existing_data["positions"] + new_docs[d_id]["positions"]
-                        intersection[d_id] = {
-                            "freq": combined_freq,
-                            "fields": combined_fields,
-                            "positions": combined_positions
-                        }
-                matched_docs = intersection
-
-            doc_counter = len(matched_docs)
+                if d_id not in all_docs:
+                    all_docs[d_id] = {
+                        "freq": freq,
+                        "fields": fields[:],
+                        "positions": positions[:],
+                    }
+                    doc_counter+=1
+                    if doc_counter >= Config.MAX_DOCS_TO_PROCESS:
+                        logger.info("Reached MAX_DOCS_TO_PROCESS limit.")
+                        break
+                else:
+                    # doc matched a previous token => sum freq, merge fields
+                    all_docs[d_id]["freq"] += freq
+                    all_docs[d_id]["fields"].extend(fields)
+                    all_docs[d_id]["positions"].extend(positions)
             if doc_counter >= Config.MAX_DOCS_TO_PROCESS:
-                logger.info("Reached MAX_DOCS_TO_PROCESS limit.")
-                break
-            if not matched_docs:
                 break
 
-        if not matched_docs:
-            return {}
-        return matched_docs
+        return all_docs
 
-    def _score_hotels(self, matched_docs:Dict, tokens:List[str])->List[Dict]:
+    def _score_hotels(self, matched_docs: Dict, tokens: List[str]) -> List[Dict]:
         """
-        matched_docs => { doc_id: {freq, fields, positions} }
-        each doc_id => int(hotel_id)
-        return a list of hotel dictionaries with scoring
+        matched_docs => {hotel_id_str: {freq, fields, positions}}
+        - 'freq' is total freq of matched tokens
+        - 'fields' is a list of fields matched (like ["name","name","region"])
+        - 'positions' are token positions (not as relevant for final scoring here)
+        The user wants a “Google-like” rank:
+        - name is top priority
+        - street-address is second
+        - region is third
+        - locality is fourth
+        - everything else is lesser or fallback
+        We'll also do:
+        - union approach (we already did that in the search)
+        - multi-token bonus
+        - small length normalization
         """
         df = self.get_hotels_df()
-        field_weights = Config.SCORING_PARAMS["field_weights"]
+        if df.empty:
+            return []
 
-        results=[]
-        doc_ids = list(matched_docs.keys())[: Config.MAX_DOCS_TO_PROCESS]
+        # Field importance for hotels:
+        field_importance = {
+            "name": 10.0,             # Highest
+            "street-address": 6.0,    # Next
+            "region": 4.0,
+            "locality": 3.5,
+            # fallback if any other fields occur
+            # we can default them to 2.0 or 1.0 in the code below
+        }
+
+        # Additional scoring knobs
+        base_freq_weight = 0.5       # more emphasis on total frequency
+        multi_token_bonus = 0.4      # small bonus for matching multiple distinct tokens
+        length_norm_factor = 0.02    # if freq is large, reduce final
+
+        doc_ids = list(matched_docs.keys())[: self.config.MAX_DOCS_TO_PROCESS]
+        distinct_query_tokens = set(tokens)
+        results = []
+
         for doc_id in doc_ids:
-            data = matched_docs[doc_id]
+            doc_data = matched_docs[doc_id]
             try:
                 h_id = int(doc_id)
             except:
                 continue
 
-            row = df[df["hotel_id"]==h_id]
+            row = df[df["hotel_id"] == h_id]
             if row.empty:
                 continue
 
-            freq = data["freq"]
-            fields = data["fields"]
-            # naive scoring
-            score = freq * 0.3
+            freq = doc_data["freq"]       # total occurrences of query tokens
+            fields = doc_data["fields"]   # each matched field
+            # We might want to see how many distinct fields we matched
+            # but let's keep it simpler
+
+            # Start with frequency-based
+            score = freq * base_freq_weight
+
+            # Field-based weighting
             for f in fields:
-                score += field_weights.get(f,1.0)
-            matched_tokens = set(tokens)
-            score += len(matched_tokens)*0.2
+                score += field_importance.get(f, 2.0)  # fallback=2.0 for unknown fields
+
+            # Multi-token bonus: approximate how many distinct tokens we matched
+            # If freq is large, we guess doc matched multiple tokens
+            approx_tokens_matched = min(len(distinct_query_tokens), freq)
+            score += approx_tokens_matched * multi_token_bonus
+
+            # length normalization
+            # e.g. if freq=50 => (1 + 0.02*50) = 2 => score is halved
+            score /= (1 + length_norm_factor * freq)
 
             info = row.iloc[0].to_dict()
             info["search_score"] = score
+            # If you want to show which fields we matched:
             info["matched_fields"] = list(set(fields))
-            info["matched_terms"] = list(matched_tokens)
+            info["matched_terms"] = list(distinct_query_tokens)
+
             results.append(clean_float_values(info))
 
+        # Finally, sort descending by search_score
         results.sort(key=lambda x: x["search_score"], reverse=True)
         return results
 
-    def _score_and_fetch_reviews(self, matched_docs:Dict, tokens:List[str])->List[Dict]:
+    def _score_and_fetch_reviews(self, matched_docs: Dict, tokens: List[str]) -> List[Dict]:
         """
-        matched_docs => {doc_id => {freq, fields, positions}}
+        matched_docs => {rev_id_str: {freq, fields, positions}}
         doc_id => str(rev_id)
-        we do rev_to_hotel[rev_id] => hotel, read chunk, etc.
-        Return a list of reviews
+        For reviews, user wants:
+        - title is top priority
+        - text is second priority
+        We'll also do freq, multi-token bonus, length norm
         """
-        from collections import defaultdict, Counter
         if not matched_docs:
             return []
-        doc_ids = list(matched_docs.keys())[: Config.MAX_DOCS_TO_PROCESS]
+        from collections import defaultdict, Counter
 
-        field_weights = Config.SCORING_PARAMS["field_weights"]
-        # group by hotel
+        df = self.get_reviews_df()
+        if df.empty:
+            return []
+
+        field_importance = {
+            "title": 8.0,
+            "text": 3.0,
+            # fallback 1.0
+        }
+
+        base_freq_weight = 0.5
+        multi_token_bonus = 0.4
+        length_norm_factor = 0.02
+
+        distinct_query_tokens = set(tokens)
+        doc_ids = list(matched_docs.keys())[: self.config.MAX_DOCS_TO_PROCESS]
+
+        # group review IDs by hotel for batch reading
         hotel_map = defaultdict(list)
-        for doc_id in doc_ids:
+        for rev_id_str in doc_ids:
             try:
-                rev_id_int = int(doc_id)
+                rev_id_int = int(rev_id_str)
             except:
                 continue
             if rev_id_int not in self.rev_to_hotel:
@@ -428,55 +521,55 @@ class SearchEngine:
             h_id = self.rev_to_hotel[rev_id_int]
             hotel_map[h_id].append(rev_id_int)
 
-        results=[]
-        hotel_review_count= Counter()
+        results = []
+        hotel_review_count = Counter()
 
         for h_id, rev_list in hotel_map.items():
-            chunk_file = self._get_review_batch_file(h_id)
-            if not os.path.exists(chunk_file):
+            batch_file = self._get_review_batch_file(h_id)
+            if not os.path.exists(batch_file):
                 continue
-            df = read_csv(chunk_file)
-            if df.empty or "rev_id" not in df.columns:
+            batch_df = read_csv(batch_file)
+            if batch_df.empty or "rev_id" not in batch_df.columns:
                 continue
-            subdf = df[df["rev_id"].astype(str).isin([str(x) for x in rev_list])]
+            subdf = batch_df[batch_df["rev_id"].astype(str).isin([str(x) for x in rev_list])]
             if subdf.empty:
                 continue
 
             for _, row_data in subdf.iterrows():
-                rev_id_str= str(row_data["rev_id"])
-                if rev_id_str not in matched_docs:
+                rev_str = str(row_data["rev_id"])
+                if rev_str not in matched_docs:
                     continue
-                freq = matched_docs[rev_id_str]["freq"]
-                fields= matched_docs[rev_id_str]["fields"]
-                positions = matched_docs[rev_id_str]["positions"]
 
-                # naive scoring
-                score = freq * 0.2
+                doc_data = matched_docs[rev_str]
+                freq = doc_data["freq"]
+                fields = doc_data["fields"]  # e.g. ["title","title","text"]
+
+                score = freq * base_freq_weight
+                # field-based weighting
                 for f in fields:
-                    score+= field_weights.get(f,1.0)*0.5
-                matched_tokens = set(tokens)
-                score+= len(matched_tokens)*0.1
+                    score += field_importance.get(f, 1.0)
+                # multi-token bonus
+                approx_tokens_matched = min(len(distinct_query_tokens), freq)
+                score += approx_tokens_matched * multi_token_bonus
+                # length norm
+                score /= (1 + length_norm_factor * freq)
 
-                row_dict= row_data.to_dict()
+                row_dict = row_data.to_dict()
                 row_dict["search_score"] = score
                 row_dict["matched_fields"] = list(set(fields))
-                row_dict["matched_terms"] = list(matched_tokens)
+                row_dict["matched_terms"] = list(distinct_query_tokens)
 
                 results.append(clean_float_values(row_dict))
                 hotel_review_count[row_dict["hotel_id"]] += 1
 
         # multi-review bonus
         for r in results:
-            extra = hotel_review_count[r["hotel_id"]] -1
-            if extra>0:
-                r["search_score"]+= 0.05*extra
+            extra = hotel_review_count[r["hotel_id"]] - 1
+            if extra > 0:
+                r["search_score"] += 0.05 * extra
 
         results.sort(key=lambda x: x["search_score"], reverse=True)
         return results
-
-
-search_engine = SearchEngine()
-
 
 # ------------------------
 # Index Updating
@@ -577,9 +670,10 @@ async def update_indices(doc_id: str, text: str, doc_type: str, fields: Dict):
         raise
 
 
-# ------------------------
-# The App
-# ------------------------
+
+# ---------- APP CODE ----------
+search_engine = SearchEngine()
+
 app = FastAPI(title="Hotel Search Engine")
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
@@ -588,19 +682,11 @@ app.add_middleware(
 
 @app.get("/search")
 async def search(query: str = Query(...), doc_type: str = Query("all")):
-    """
-    doc_type='reviews' => search both indexes, return reviews 
-    doc_type='all' => search both indexes, return hotels
-    """
-    if doc_type not in ["all", "reviews"]:
-        raise HTTPException(status_code=400, detail="doc_type must be 'all' or 'reviews'")
     try:
         return await search_engine.search(query, doc_type)
     except Exception as e:
         logger.error(f"Search error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 @app.get("/hotels/{hotel_id}")
 async def get_hotel(hotel_id: int):
@@ -715,11 +801,15 @@ async def create_review(review: ReviewCreate, background_tasks: BackgroundTasks)
         search_engine.rev_to_hotel[rev_id] = review.hotel_id
 
         # chunking by hotel_id
-        start = ((review.hotel_id - 1) // Config.REVIEW_BATCH_SIZE) * Config.REVIEW_BATCH_SIZE + 1
+        start = (
+            (review.hotel_id - 1) // Config.REVIEW_BATCH_SIZE
+        ) * Config.REVIEW_BATCH_SIZE + 1
         end = start + Config.REVIEW_BATCH_SIZE - 1
         chunk_file = f"{Config.REVIEWS_DIR}/reviews_{start}-{end}.csv"
 
-        existing = read_csv(chunk_file) if os.path.exists(chunk_file) else pd.DataFrame()
+        existing = (
+            read_csv(chunk_file) if os.path.exists(chunk_file) else pd.DataFrame()
+        )
         newdf = pd.concat([existing, pd.DataFrame([r_dict])], ignore_index=True)
         write_csv(chunk_file, newdf)
 
@@ -738,7 +828,6 @@ async def create_review(review: ReviewCreate, background_tasks: BackgroundTasks)
     except Exception as e:
         logger.error(f"Error creating review: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @app.post("/hotels/upload", status_code=201)
@@ -806,7 +895,9 @@ async def upload_hotels(
 
 
 @app.post("/reviews/upload", status_code=201)
-async def upload_reviews(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()):
+async def upload_reviews(
+    file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks()
+):
     try:
         content = await file.read()
         df = pd.read_csv(io.StringIO(content.decode("utf-8-sig")))
@@ -840,7 +931,9 @@ async def upload_reviews(file: UploadFile = File(...), background_tasks: Backgro
             start = ...
             end = ...
             chunk_file = f"{Config.REVIEWS_DIR}/reviews_{start}-{end}.csv"
-            existing = read_csv(chunk_file) if os.path.exists(chunk_file) else pd.DataFrame()
+            existing = (
+                read_csv(chunk_file) if os.path.exists(chunk_file) else pd.DataFrame()
+            )
             newdf = pd.concat([existing, group], ignore_index=True)
             write_csv(chunk_file, newdf)
 
@@ -849,7 +942,9 @@ async def upload_reviews(file: UploadFile = File(...), background_tasks: Backgro
             doc_id = str(row_data["rev_id"])
             text_for_index = f"{row_data['title']} {row_data['text']}"
             fields_dict = {"title": row_data["title"], "text": row_data["text"]}
-            background_tasks.add_task(update_indices, doc_id, text_for_index, "reviews", fields_dict)
+            background_tasks.add_task(
+                update_indices, doc_id, text_for_index, "reviews", fields_dict
+            )
 
         # ---------- KEY: invalidate caches for all hotels that got new reviews ----------
         for h_id in updated_hotels:
