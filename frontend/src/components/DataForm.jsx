@@ -3,8 +3,11 @@ import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { useNavigate } from 'react-router-dom'
+
 
 function DataForm() {
+    const navigate = useNavigate()
     const [activeTab, setActiveTab] = useState('reviews')
     const [isFileUpload, setIsFileUpload] = useState(false)
     const [hotelFormData, setHotelFormData] = useState({
@@ -66,6 +69,8 @@ function DataForm() {
                     .then((res) => res.json())
                     .then((data) => {
                         console.log('File uploaded:', data);
+                        alert('File uploaded successfully!');
+                        navigate('/');
                     })
                     .catch((err) => {
                         console.error('Error uploading file:', err);
@@ -96,6 +101,8 @@ function DataForm() {
                     .then((res) => res.json())
                     .then((data) => {
                         console.log('Review created:', data);
+                        alert('File uploaded successfully!');
+                        navigate('/');
                     })
                     .catch((err) => {
                         console.error('Error creating review:', err);
@@ -113,6 +120,8 @@ function DataForm() {
                     .then((res) => res.json())
                     .then((data) => {
                         console.log('File uploaded:', data);
+                        alert('File uploaded successfully!');
+                        navigate('/');
                     })
                     .catch((err) => {
                         console.error('Error uploading file:', err);
@@ -143,6 +152,8 @@ function DataForm() {
                     .then((res) => res.json())
                     .then((data) => {
                         console.log('Hotel created:', data);
+                        alert('File uploaded successfully!');
+                        navigate('/');
                     })
                     .catch((err) => {
                         console.error('Error creating hotel:', err);
